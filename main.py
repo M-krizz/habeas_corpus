@@ -170,9 +170,10 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
 
     args        = sys.argv[1:]
-    dry_run     = "--live"  not in args
-    build_index = "--index" in args
-    serve       = "--serve" in args
+    dry_run     = "--live"   not in args
+    build_index = "--index"  in args
+    serve       = "--serve"  in args
+    ingest      = "--ingest" in args
     engine      = "paddle"
 
     # Parse --engine <name>
@@ -182,6 +183,13 @@ if __name__ == "__main__":
 
     if serve:
         start_server()
+    elif ingest:
+        from batch_ingest import run_full_ingestion
+        limit = None
+        for i, arg in enumerate(args):
+            if arg == "--limit" and i + 1 < len(args):
+                limit = int(args[i + 1])
+        run_full_ingestion(dry_run=dry_run, limit=limit)
     else:
         # Collect positional file arguments (not flags)
         file_args = [

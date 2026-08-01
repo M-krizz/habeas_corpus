@@ -60,23 +60,21 @@ _QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 def _get_model():
     """
     Load the BGE-M3 sentence-transformer model exactly once.
-
-    The ``@lru_cache`` decorator ensures that no matter how many times
-    ``_get_model()`` is called across the process, the model is
-    instantiated only on the first call.  Subsequent calls return the
-    cached instance instantly.
-
-    Notes
-    -----
-    - First call downloads ~570 MB from HuggingFace Hub (cached
-      afterwards at ``~/.cache/huggingface/hub``).
-    - ``device=None`` lets sentence-transformers auto-detect CUDA/MPS;
-      falls back to CPU silently.
     """
+    import os
+    import torch
     from sentence_transformers import SentenceTransformer
 
-    print(f"[embedder] Loading model: {MODEL_NAME}  (first call only)")
-    model = SentenceTransformer(MODEL_NAME)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        threads = max(1, os.cpu_count() or 4)
+        try:
+            torch.set_num_threads(threads)
+        except Exception:
+            pass
+
+    print(f"[embedder] Loading model: {MODEL_NAME} on device '{device}' (threads: {torch.get_num_threads()})")
+    model = SentenceTransformer(MODEL_NAME, device=device)
     print(f"[embedder] Model loaded. Embedding dim: {model.get_embedding_dimension()}")
     return model
 
@@ -112,30 +110,20 @@ def _l2_normalise(matrix: np.ndarray) -> np.ndarray:
 # Public API
 # ---------------------------------------------------------------------------
 
-def encode_chunks(texts: List[str], batch_size: int = 32) -> np.ndarray:
+def encode_chunks(texts: List[str], batch_size: int = 64) -> np.ndarray:
     """
     Encode a list of document chunk texts into L2-normalised vectors.
-
-    Parameters
-    ----------
-    texts      : list of chunk strings to embed
-    batch_size : number of texts processed per forward pass (default 32)
-
-    Returns
-    -------
-    np.ndarray
-        Shape ``(len(texts), 1024)``, dtype float32.
-        Row ``i`` is the embedding for ``texts[i]``.
-
-    Notes
-    -----
-    - No instruction prefix is added for document chunks; the BGE-M3
-      documentation recommends the prefix only for queries.
-    - ``show_progress_bar=True`` so large batches give visible feedback.
+    High-speed optimized for CPU batch processing.
     """
-    model   = _get_model()
+    model = _get_model()
+    if hasattr(model, "max_seq_length"):
+        model.max_seq_length = 256
+
+    # Truncate texts to max 1200 chars for fast transformer processing
+    truncated_texts = [t[:1200] for t in texts]
+
     vectors = model.encode(
-        texts,
+        truncated_texts,
         batch_size        = batch_size,
         normalize_embeddings = False,   # we normalise manually below
         show_progress_bar = len(texts) > 10,
