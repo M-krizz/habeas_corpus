@@ -23,21 +23,8 @@ load_dotenv()
 
 
 # ---------------------------------------------------------------------------
-# Gemini client — lazy singleton (shared with legal_concept_mapper)
+# LLM Client integration (shared via reasoning.llm_client)
 # ---------------------------------------------------------------------------
-
-@lru_cache(maxsize=1)
-def _get_gemini():
-    """Load Gemini client once. Returns None if key is missing."""
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if not api_key or api_key == "YOUR_GEMINI_KEY_HERE":
-        return None
-    try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        return client
-    except Exception:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -94,36 +81,18 @@ USER MESSAGE:
 
 def _llm_extract(user_message: str, memory_json: str) -> dict | None:
     """
-    Use Gemini to extract structured facts from a user message.
+    Use LLM (via OpenRouter or Gemini Studio) to extract structured facts from a message.
     Returns a dict of new facts, or None on failure.
     """
-    client = _get_gemini()
-    if client is None:
-        return None
-
-    prompt = _EXTRACTION_PROMPT.format(
-        memory_json=memory_json,
-        user_message=user_message.strip(),
-    )
-
     try:
-        from google.genai import types
-        model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=512,
-                response_mime_type="application/json",
-            ),
+        from reasoning.llm_client import call_llm
+        prompt = _EXTRACTION_PROMPT.format(
+            memory_json=memory_json,
+            user_message=user_message.strip(),
         )
-        raw = response.text.strip()
-
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = re.sub(r"^```[a-z]*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw.strip())
+        raw = call_llm(prompt, temperature=0.0, max_tokens=512, json_mode=True)
+        if not raw:
+            return None
 
         data = json.loads(raw)
         if not isinstance(data, dict):

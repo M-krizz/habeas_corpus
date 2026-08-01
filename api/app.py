@@ -207,12 +207,15 @@ async def health():
     except Exception as exc:
         status["faiss"] = f"error: {exc}"
 
-    # Gemini
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    status["gemini"] = (
-        "configured" if gemini_key and gemini_key != "YOUR_GEMINI_KEY_HERE"
-        else "NOT CONFIGURED — add GEMINI_API_KEY to .env"
-    )
+    # LLM (OpenRouter / Gemini)
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if openrouter_key:
+        status["llm"] = "configured (OpenRouter)"
+    elif gemini_key and gemini_key != "YOUR_GEMINI_KEY_HERE":
+        status["llm"] = "configured (Gemini AI Studio)"
+    else:
+        status["llm"] = "NOT CONFIGURED — add OPENROUTER_API_KEY to .env"
 
     # Indian Kanoon
     ik_key = os.getenv("INDIANKANOON_API_KEY", "")

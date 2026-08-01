@@ -100,6 +100,7 @@ class ReasoningResponse(BaseModel):
     Returned to the UI and API caller.
     """
     summary: str = Field(description="Plain-English explanation of the legal situation.")
+    what_to_do: str = Field(default="", description="Actionable guidance steps for the user.")
     applicable_acts: list[str] = Field(default_factory=list)
     applicable_sections: list[str] = Field(default_factory=list)
     precedents: list[dict] = Field(

@@ -86,8 +86,9 @@ def _parse_response(raw: str, legal_query: LegalQuery,
         ]
 
     return ReasoningResponse(
-        summary            = data.get("summary", "Insufficient evidence found."),
-        applicable_acts    = all_acts,
+        summary             = data.get("summary", "Insufficient evidence found."),
+        what_to_do          = data.get("what_to_do", ""),
+        applicable_acts     = all_acts,
         applicable_sections = all_sections,
         precedents         = precedents,
         confidence         = confidence,

@@ -38,26 +38,8 @@ load_dotenv()
 
 
 # ---------------------------------------------------------------------------
-# Gemini client — lazy singleton
+# Language detection
 # ---------------------------------------------------------------------------
-
-@lru_cache(maxsize=1)
-def _get_gemini():
-    """Load the Gemini Flash client once. Returns None if key is missing."""
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if not api_key or api_key == "YOUR_GEMINI_KEY_HERE":
-        print("[legal_concept_mapper] WARNING — GEMINI_API_KEY not set. "
-              "Using rule-based fallback mapper.")
-        return None
-    try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        print("[legal_concept_mapper] Gemini 2.5 Flash client loaded.")
-        return client
-    except Exception as exc:
-        print(f"[legal_concept_mapper] WARNING — Could not load Gemini: {exc}. "
-              "Falling back to rule-based mapper.")
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -133,26 +115,15 @@ Guidelines:
 
 def _llm_map(query: str) -> LegalQuery | None:
     """
-    Send query to Gemini Flash and parse the structured response.
+    Send query to LLM (via OpenRouter or Gemini Studio) and parse structured response.
     Returns None on any failure so the caller can use the rule-based fallback.
     """
-    client = _get_gemini()
-    if client is None:
-        return None
-
-    prompt = f"{_SYSTEM_PROMPT}\n\nUser query:\n{query.strip()}"
     try:
-        model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-        )
-        raw = response.text.strip()
-
-        # Strip accidental markdown fences
-        if raw.startswith("```"):
-            raw = re.sub(r"^```[a-z]*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
+        from reasoning.llm_client import call_llm
+        prompt = f"{_SYSTEM_PROMPT}\n\nUser query:\n{query.strip()}"
+        raw = call_llm(prompt, temperature=0.0, max_tokens=1024, json_mode=True)
+        if not raw:
+            return None
 
         data = json.loads(raw)
         if "detected_language" not in data or not data["detected_language"]:
