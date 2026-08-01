@@ -1,14 +1,16 @@
 """
-api/app.py — Habeas Corpus
-============================
-FastAPI application — the HTTP interface for the Habeas Corpus AI engine.
+api/app.py — Nyaya-Setu API Server
+=====================================
+FastAPI application — the HTTP interface for the Nyaya-Setu AI engine.
 
 Endpoints:
-  POST /query           — main query endpoint
-  POST /feedback        — record user feedback (👍/👎)
-  GET  /health          — system health check
-  GET  /staging/status  — view staging pool contents
-  GET  /               — serve the UI (index.html)
+  POST /chat              — multi-turn conversation (Three-Brain Architecture)
+  POST /query             — legacy single-shot query
+  GET  /conversation/{id} — retrieve conversation state
+  POST /feedback          — record user feedback
+  GET  /health            — system health check
+  GET  /staging/status    — view staging pool contents
+  GET  /                  — serve the UI (index.html)
 
 Run:
     uv run uvicorn api.app:app --reload --port 8000
@@ -28,9 +30,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(
-    title       = "Habeas Corpus — Adaptive Judicial Knowledge Engine",
-    description = "AI-powered Indian legal research with Knowledge Graph + Semantic Search",
-    version     = "2.0.0",
+    title       = "Nyaya-Setu — Adaptive Judicial Knowledge Engine",
+    description = "AI-powered Indian legal research with Three-Brain Architecture: "
+                  "Conversation Brain + Knowledge Brain + Reasoning Brain",
+    version     = "3.0.0",
     docs_url    = "/docs",
 )
 
@@ -47,6 +50,10 @@ _UI_PATH = Path(__file__).parent.parent / "ui" / "index.html"
 # ---------------------------------------------------------------------------
 # Request / Response models
 # ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    conversation_id: str | None = None
+    message: str
 
 class QueryRequest(BaseModel):
     query: str
@@ -73,14 +80,73 @@ async def serve_ui():
     )
 
 
+@app.post("/chat")
+async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
+    """
+    Multi-turn conversation endpoint (Three-Brain Architecture).
+
+    The Conversation Brain processes the message:
+    - If more information is needed → returns a follow-up question
+    - If enough slots are filled → triggers Knowledge + Reasoning Brains
+      and returns a full legal analysis
+
+    Parameters
+    ----------
+    req.conversation_id : session ID (null to start new conversation)
+    req.message         : the user's message text
+    """
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    try:
+        from conversation.conversation import process_message
+        result = await process_message(req.conversation_id, req.message.strip())
+
+        # Schedule background indexing if new cases were staged
+        if result.full_response and result.full_response.get("_staging_hashes"):
+            from knowledge_acquisition.background_indexer import run_background_indexing
+            hashes = result.full_response.pop("_staging_hashes", [])
+            background_tasks.add_task(run_background_indexing, hashes)
+
+        return {
+            "type":             result.type,
+            "conversation_id":  result.conversation_id,
+            "message":          result.message,
+            "memory":           result.memory_snapshot,
+            "slot_status":      result.slot_status,
+            "full_response":    result.full_response,
+        }
+
+    except Exception as exc:
+        print(f"[app] Chat error: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/conversation/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    """Retrieve the current state of a conversation."""
+    from conversation.conversation import get_session
+    session = get_session(conversation_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return {
+        "conversation_id": session.conversation_id,
+        "memory":          session.filled_slots(),
+        "messages":        session.messages,
+        "turn_count":      session.turn_count,
+        "ready":           session.ready_for_retrieval,
+    }
+
+
 @app.post("/query")
 async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
     """
-    Main query endpoint.
+    Legacy single-shot query endpoint.
 
-    Runs the full pipeline and returns a structured JSON answer.
-    Any new web-retrieved cases are staged and indexed in the background
-    AFTER the response is returned — so the user never waits.
+    Runs the full pipeline without multi-turn conversation.
+    Use POST /chat for the Three-Brain Architecture.
     """
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
@@ -103,7 +169,7 @@ async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
 
 @app.post("/feedback")
 async def feedback_endpoint(req: FeedbackRequest):
-    """Record user feedback (👍 = 1, 👎 = -1)."""
+    """Record user feedback (thumbs up = 1, thumbs down = -1)."""
     if req.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="Rating must be 1 or -1.")
 

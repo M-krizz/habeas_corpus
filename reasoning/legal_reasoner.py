@@ -24,11 +24,15 @@ from __future__ import annotations
 
 import json
 import re
+from typing import TYPE_CHECKING
 
 from evidence.schema import CaseEvidence
 from query_understanding.schema import LegalQuery, ReasoningResponse
 from reasoning.prompt_builder import build_prompt
 from reasoning.llm_client import generate
+
+if TYPE_CHECKING:
+    from conversation.memory import ConversationMemory
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +120,17 @@ def reason(
     legal_query: LegalQuery,
     evidence:    list[CaseEvidence],
     confidence:  float = 1.0,
+    memory:      "ConversationMemory | None" = None,
 ) -> ReasoningResponse:
     """
     Run the full LLM reasoning step.
 
     Parameters
     ----------
-    legal_query : structured query from the concept mapper
+    legal_query : structured query from the concept mapper or rewriter
     evidence    : assembled case evidence from the aggregator
     confidence  : retrieval confidence score (passed through to response)
+    memory      : optional ConversationMemory from the Conversation Brain
 
     Returns
     -------
@@ -146,8 +152,8 @@ def reason(
         ],
     }
 
-    # Build prompt
-    prompt = build_prompt(legal_query, evidence)
+    # Build prompt (includes conversation context if memory is available)
+    prompt = build_prompt(legal_query, evidence, memory=memory)
 
     # Call LLM
     raw = generate(prompt, fallback_context=fallback_ctx)

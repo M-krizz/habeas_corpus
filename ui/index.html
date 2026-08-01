@@ -1,802 +1,817 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Habeas Corpus — AI Legal Research Engine</title>
-  <meta name="description" content="AI-powered Indian legal research using Knowledge Graphs and Semantic Search. Find relevant cases, applicable laws, and judicial precedents instantly." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nyaya-Setu — AI Legal Research Engine</title>
+  <meta name="description" content="AI-powered Indian legal research with multi-turn conversation. Ask about your legal situation and get grounded, precedent-backed guidance.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --bg-primary:   #0a0d14;
-      --bg-card:      #111622;
-      --bg-input:     #161c2d;
-      --bg-hover:     #1a2236;
-      --accent:       #6c63ff;
-      --accent-light: #8b85ff;
-      --accent-glow:  rgba(108,99,255,0.18);
-      --gold:         #f5c518;
-      --gold-dim:     rgba(245,197,24,0.12);
-      --green:        #22d3a5;
-      --red:          #ff6b6b;
-      --text-primary: #e8eaf0;
-      --text-secondary:#94a3b8;
-      --text-muted:   #4a5568;
-      --border:       rgba(255,255,255,0.07);
-      --border-focus: rgba(108,99,255,0.5);
-      --radius:       14px;
-      --radius-sm:    8px;
-      --shadow:       0 4px 30px rgba(0,0,0,0.4);
-      --shadow-accent:0 0 40px rgba(108,99,255,0.15);
-    }
-
+    /* ── Reset & Base ─────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    :root {
+      --bg-primary:    #0a0e1a;
+      --bg-secondary:  #111827;
+      --bg-card:       #1a2235;
+      --bg-bubble-user:#1e3a5f;
+      --bg-bubble-bot: #1a2235;
+      --accent:        #3b82f6;
+      --accent-glow:   rgba(59, 130, 246, 0.25);
+      --gold:          #f59e0b;
+      --green:         #10b981;
+      --red:           #ef4444;
+      --text-primary:  #e2e8f0;
+      --text-secondary:#94a3b8;
+      --text-muted:    #64748b;
+      --border:        #1e293b;
+      --radius:        12px;
+      --radius-sm:     8px;
+      --font:          'Inter', -apple-system, sans-serif;
+      --mono:          'JetBrains Mono', monospace;
+    }
+    html { height: 100%; }
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font);
       background: var(--bg-primary);
       color: var(--text-primary);
-      min-height: 100vh;
-      overflow-x: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    /* ── Background mesh gradient ── */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 80% 50% at 10% 0%, rgba(108,99,255,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 90% 100%, rgba(34,211,165,0.05) 0%, transparent 60%);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .app { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 0 24px 80px; }
-
-    /* ── Header ── */
-    header {
-      text-align: center;
-      padding: 52px 0 36px;
-    }
-    .logo-badge {
-      display: inline-flex;
+    /* ── Header ───────────────────────────────────────── */
+    .header {
+      display: flex;
       align-items: center;
-      gap: 10px;
-      background: var(--gold-dim);
-      border: 1px solid rgba(245,197,24,0.25);
-      border-radius: 100px;
-      padding: 6px 16px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--gold);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 20px;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
-    .logo-badge .dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--gold);
-      animation: pulse 2s ease infinite;
-    }
-    h1 {
-      font-family: 'Playfair Display', serif;
-      font-size: clamp(2rem, 5vw, 3rem);
-      font-weight: 700;
-      color: var(--text-primary);
-      line-height: 1.15;
-      margin-bottom: 14px;
-    }
-    h1 span { color: var(--accent-light); }
-    .tagline {
-      font-size: 16px;
-      color: var(--text-secondary);
-      max-width: 520px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
-
-    /* ── Search Box ── */
-    .search-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 28px;
-      margin: 36px 0 24px;
-      box-shadow: var(--shadow);
-      transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    .search-card:focus-within {
-      border-color: var(--border-focus);
-      box-shadow: var(--shadow), var(--shadow-accent);
-    }
-    .search-label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      margin-bottom: 12px;
-    }
-    textarea#query-input {
-      width: 100%;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-family: 'Inter', sans-serif;
-      font-size: 16px;
-      line-height: 1.6;
-      padding: 16px 18px;
-      resize: vertical;
-      min-height: 90px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    textarea#query-input::placeholder { color: var(--text-muted); }
-    textarea#query-input:focus { border-color: var(--accent); }
-
-    .search-actions {
+    .header-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-top: 16px;
     }
-    #search-btn {
-      flex: 1;
+    .header-brand .logo {
+      width: 36px; height: 36px;
       background: linear-gradient(135deg, var(--accent), #8b5cf6);
-      border: none;
-      border-radius: var(--radius-sm);
-      color: #fff;
-      font-family: 'Inter', sans-serif;
-      font-size: 15px;
-      font-weight: 600;
-      padding: 14px 28px;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
-      box-shadow: 0 4px 20px rgba(108,99,255,0.35);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700; color: #fff;
     }
-    #search-btn:hover:not(:disabled) {
-      opacity: 0.93;
-      transform: translateY(-1px);
-      box-shadow: 0 6px 28px rgba(108,99,255,0.5);
+    .header-brand h1 {
+      font-size: 18px; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    #search-btn:active:not(:disabled) { transform: translateY(0); }
-    #search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #clear-btn {
+    .header-brand .subtitle {
+      font-size: 11px; color: var(--text-muted); margin-top: 1px;
+    }
+    .header-status {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .status-label {
+      font-size: 12px; color: var(--text-muted);
+    }
+    .new-chat-btn {
       background: transparent;
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
       color: var(--text-secondary);
-      font-family: 'Inter', sans-serif;
-      font-size: 14px;
-      padding: 14px 20px;
+      font-size: 12px; font-family: var(--font);
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
+      transition: all 0.2s;
     }
-    #clear-btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+    .new-chat-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-glow);
+    }
 
-    /* Example queries */
-    .examples {
+    /* ── Main Layout ──────────────────────────────────── */
+    .main {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 14px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar (Slot Panel) ─────────────────────────── */
+    .sidebar {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow-y: auto;
+    }
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px; font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .slot-list {
+      padding: 12px 16px;
+      flex: 1;
+    }
+    .slot-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .slot-icon {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .slot-icon.filled {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+    }
+    .slot-icon.empty {
+      background: rgba(100, 116, 139, 0.15);
+      color: var(--text-muted);
+    }
+    .slot-label {
+      font-size: 12px; color: var(--text-muted);
+    }
+    .slot-value {
+      font-size: 13px; font-weight: 500; color: var(--text-primary);
+    }
+    .slot-progress {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .progress-bar {
+      height: 4px; border-radius: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--green));
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .progress-label {
+      font-size: 11px; color: var(--text-muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    /* ── Chat Area ────────────────────────────────────── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .messages::-webkit-scrollbar { width: 6px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb {
+      background: var(--border); border-radius: 3px;
+    }
+
+    /* ── Welcome Screen ───────────────────────────────── */
+    .welcome {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      text-align: center;
+      padding: 40px;
+    }
+    .welcome-icon {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+    }
+    .welcome h2 {
+      font-size: 22px; font-weight: 700;
+      background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .welcome p {
+      font-size: 14px; color: var(--text-muted);
+      max-width: 420px; line-height: 1.6;
+    }
+    .welcome-examples {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      justify-content: center; margin-top: 8px;
     }
     .example-chip {
-      background: var(--bg-input);
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 100px;
-      padding: 6px 14px;
-      font-size: 12px;
-      color: var(--text-secondary);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 13px; color: var(--text-secondary);
       cursor: pointer;
       transition: all 0.2s;
     }
     .example-chip:hover {
-      background: var(--accent-glow);
       border-color: var(--accent);
-      color: var(--accent-light);
+      color: var(--accent);
+      background: var(--accent-glow);
     }
 
-    /* ── Status bar ── */
-    #status-bar {
-      display: none;
-      align-items: center;
+    /* ── Message Bubbles ──────────────────────────────── */
+    .message {
+      display: flex;
       gap: 12px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px 18px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: var(--text-secondary);
+      max-width: 80%;
+      animation: fadeIn 0.3s ease-out;
     }
-    #status-bar.visible { display: flex; }
-    .spinner {
-      width: 18px; height: 18px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      flex-shrink: 0;
-    }
-    .status-steps { display: flex; gap: 6px; flex-wrap: wrap; }
-    .step-badge {
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: 100px;
-      padding: 3px 10px;
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--text-muted);
-      transition: all 0.4s;
-    }
-    .step-badge.active {
-      border-color: var(--accent);
-      color: var(--accent-light);
-      background: var(--accent-glow);
-    }
-    .step-badge.done {
-      border-color: var(--green);
-      color: var(--green);
-      background: rgba(34,211,165,0.08);
-    }
-
-    /* ── Result sections ── */
-    .result-section {
-      display: none;
-      animation: fadeUp 0.5s ease forwards;
-    }
-    .result-section.visible { display: block; }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(16px); }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+    .message.bot {
+      align-self: flex-start;
+    }
+    .msg-avatar {
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+    .message.user .msg-avatar {
+      background: var(--bg-bubble-user);
+      color: var(--accent);
+    }
+    .message.bot .msg-avatar {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color: #fff;
+    }
+    .msg-content {
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .message.user .msg-content {
+      background: var(--bg-bubble-user);
+      border-bottom-right-radius: 4px;
+    }
+    .message.bot .msg-content {
+      background: var(--bg-bubble-bot);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
 
-    /* ── Legal Context Pill Row ── */
-    .context-row {
+    /* ── Thinking indicator ───────────────────────────── */
+    .thinking {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 20px;
+      gap: 12px;
+      align-self: flex-start;
+      max-width: 80%;
+      animation: fadeIn 0.3s ease-out;
     }
-    .context-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border-radius: 100px;
-      padding: 5px 13px;
-      font-size: 12px;
-      font-weight: 500;
+    .thinking .msg-content {
+      background: var(--bg-bubble-bot);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text-muted);
+      font-size: 13px;
     }
-    .pill-domain { background: rgba(108,99,255,0.15); border: 1px solid rgba(108,99,255,0.3); color: var(--accent-light); }
-    .pill-act    { background: rgba(245,197,24,0.1);  border: 1px solid rgba(245,197,24,0.25); color: var(--gold); }
-    .pill-section{ background: rgba(34,211,165,0.1);  border: 1px solid rgba(34,211,165,0.25); color: var(--green); }
+    .dots { display: flex; gap: 4px; }
+    .dots span {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: dotBounce 1.4s ease-in-out infinite;
+    }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
 
-    /* ── AI Explanation ── */
-    .card {
+    /* ── Legal Analysis Card ──────────────────────────── */
+    .analysis-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 24px 28px;
-      margin-bottom: 20px;
-      box-shadow: var(--shadow);
+      padding: 20px;
+      margin-top: 8px;
     }
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 18px;
+    .analysis-card h3 {
+      font-size: 15px; font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
     }
-    .card-title {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+    .analysis-section {
+      margin-bottom: 16px;
+    }
+    .analysis-section h4 {
+      font-size: 12px; font-weight: 600;
       color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .card-title .icon { font-size: 16px; }
-
-    .confidence-bar-wrap {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-    .confidence-bar {
-      width: 80px;
-      height: 5px;
-      background: var(--bg-input);
-      border-radius: 100px;
-      overflow: hidden;
-    }
-    .confidence-fill {
-      height: 100%;
-      border-radius: 100px;
-      background: linear-gradient(90deg, var(--accent), var(--green));
-      transition: width 1s ease;
-    }
-
-    #ai-summary {
-      font-size: 15.5px;
-      line-height: 1.75;
-      color: var(--text-primary);
-    }
-    .source-tag {
-      display: inline-block;
-      margin-top: 14px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
       text-transform: uppercase;
-      padding: 3px 10px;
-      border-radius: 100px;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
     }
-    .source-permanent { background: rgba(34,211,165,0.1); color: var(--green); border: 1px solid rgba(34,211,165,0.25); }
-    .source-web       { background: rgba(245,197,24,0.1);  color: var(--gold); border: 1px solid rgba(245,197,24,0.25); }
-    .source-hybrid    { background: rgba(108,99,255,0.1); color: var(--accent-light); border: 1px solid rgba(108,99,255,0.25); }
-
-    /* ── What To Do ── */
-    #what-to-do-text {
-      font-size: 15px;
-      line-height: 1.8;
+    .analysis-section p {
+      font-size: 14px; line-height: 1.7;
       color: var(--text-primary);
+    }
+    .tag-list {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .tag {
+      background: rgba(59, 130, 246, 0.12);
+      color: var(--accent);
+      font-size: 12px; font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .tag.gold {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--gold);
+    }
+    .precedent-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .precedent-item .case-name {
+      font-size: 13px; font-weight: 600; color: var(--gold);
+    }
+    .precedent-item .case-detail {
+      font-size: 12px; color: var(--text-secondary);
+      margin-top: 4px; line-height: 1.5;
+    }
+    .disclaimer-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 12px; color: #fca5a5;
+      line-height: 1.5;
+    }
+    .what-to-do {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 13px; color: #6ee7b7;
+      line-height: 1.7;
       white-space: pre-line;
     }
 
-    /* ── Cases Table ── */
-    .cases-list { display: flex; flex-direction: column; gap: 14px; }
-    .case-card {
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 18px 20px;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .case-card:hover { border-color: rgba(108,99,255,0.3); background: var(--bg-hover); }
-    .case-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-    .case-name {
-      font-size: 14.5px;
-      font-weight: 600;
-      color: var(--text-primary);
-      line-height: 1.4;
-    }
-    .score-badge {
+    /* ── Input Area ───────────────────────────────────── */
+    .input-area {
+      padding: 16px 24px 20px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
       flex-shrink: 0;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 3px 9px;
-      border-radius: 100px;
-      background: var(--accent-glow);
-      border: 1px solid rgba(108,99,255,0.3);
-      color: var(--accent-light);
     }
-    .case-meta {
+    .input-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 10px;
+      gap: 10px;
+      max-width: 800px;
+      margin: 0 auto;
     }
-    .meta-chip {
-      font-size: 11px;
-      color: var(--text-muted);
-      background: var(--bg-card);
+    .input-row input {
+      flex: 1;
+      background: var(--bg-primary);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2px 8px;
-    }
-    .case-held {
-      font-size: 13.5px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-      margin-bottom: 12px;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .case-actions {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .feedback-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-muted);
-      font-size: 13px;
-      padding: 5px 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .feedback-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
-    .feedback-btn.voted-up   { background: rgba(34,211,165,0.12); border-color: var(--green); color: var(--green); }
-    .feedback-btn.voted-down { background: rgba(255,107,107,0.12); border-color: var(--red); color: var(--red); }
-    .case-relevance {
-      font-size: 12px;
-      color: var(--accent-light);
-      margin-left: auto;
-      font-style: italic;
-    }
-
-    /* ── Applicable Law ── */
-    .law-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-    .law-item {
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 10px 14px;
-    }
-    .law-item-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 4px; }
-    .law-item-value { font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
-
-    /* ── Disclaimer ── */
-    .disclaimer {
-      font-size: 12px;
-      color: var(--text-muted);
-      border-left: 3px solid var(--border);
-      padding: 10px 14px;
-      margin-top: 8px;
-      line-height: 1.6;
-    }
-
-    /* ── Error state ── */
-    #error-box {
-      display: none;
-      background: rgba(255,107,107,0.07);
-      border: 1px solid rgba(255,107,107,0.25);
-      border-radius: var(--radius-sm);
-      padding: 16px 20px;
-      color: var(--red);
+      border-radius: var(--radius);
+      padding: 12px 18px;
       font-size: 14px;
-      margin-bottom: 20px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.2s;
     }
-    #error-box.visible { display: block; }
+    .input-row input::placeholder {
+      color: var(--text-muted);
+    }
+    .input-row input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .send-btn {
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      border: none;
+      border-radius: var(--radius);
+      padding: 0 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.15s, opacity 0.2s;
+      font-size: 18px; color: #fff;
+    }
+    .send-btn:hover { transform: scale(1.05); }
+    .send-btn:active { transform: scale(0.95); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    /* ── Animations ── */
-    @keyframes spin   { to { transform: rotate(360deg); } }
-    @keyframes pulse  { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg-primary); }
-    ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+    /* ── Responsive ───────────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .message { max-width: 95%; }
+    }
   </style>
 </head>
-
 <body>
-<div class="app">
 
   <!-- Header -->
-  <header>
-    <div class="logo-badge">
-      <span class="dot"></span>
-      Adaptive Judicial Knowledge Engine
+  <div class="header">
+    <div class="header-brand">
+      <div class="logo">NS</div>
+      <div>
+        <h1>Nyaya-Setu</h1>
+        <div class="subtitle">Three-Brain Legal AI Engine</div>
+      </div>
     </div>
-    <h1>Habeas <span>Corpus</span></h1>
-    <p class="tagline">
-      Ask your legal question in plain English. Our AI searches
-      verified Indian judicial precedents and explains your rights.
-    </p>
-  </header>
-
-  <!-- Search Card -->
-  <div class="search-card">
-    <div class="search-label">Your Legal Question</div>
-    <textarea id="query-input"
-      placeholder="e.g. I got into a road accident. The other party says Section 134 protects him. What should I do?"
-      rows="3"
-    ></textarea>
-
-    <div class="examples">
-      <span class="example-chip" onclick="setQuery(this)">My neighbour's dog bit my child</span>
-      <span class="example-chip" onclick="setQuery(this)">Someone forged my signature on a document</span>
-      <span class="example-chip" onclick="setQuery(this)">My landlord evicted me without notice</span>
-      <span class="example-chip" onclick="setQuery(this)">My employer hasn't paid salary for 3 months</span>
-    </div>
-
-    <div class="search-actions">
-      <button id="search-btn" onclick="submitQuery()">⚖️ &nbsp;Ask Habeas Corpus</button>
-      <button id="clear-btn" onclick="clearAll()">Clear</button>
+    <div class="header-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Ready</span>
+      <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
     </div>
   </div>
 
-  <!-- Status Bar -->
-  <div id="status-bar">
-    <div class="spinner"></div>
-    <div class="status-steps">
-      <span class="step-badge" id="step-1">Mapping Legal Concepts</span>
-      <span class="step-badge" id="step-2">Searching Knowledge Graph</span>
-      <span class="step-badge" id="step-3">Hybrid Ranking</span>
-      <span class="step-badge" id="step-4">Assembling Evidence</span>
-      <span class="step-badge" id="step-5">AI Reasoning</span>
+  <!-- Main Layout -->
+  <div class="main">
+
+    <!-- Sidebar: Slot Status -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">Conversation Context</div>
+      <div class="slot-list" id="slotList">
+        <div style="padding:20px 0; color:var(--text-muted); font-size:13px; text-align:center;">
+          Start a conversation to see extracted legal facts here.
+        </div>
+      </div>
+      <div class="slot-progress" id="slotProgress" style="display:none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div class="progress-label" id="progressLabel">0 / 0 slots filled</div>
+      </div>
     </div>
-  </div>
 
-  <!-- Error Box -->
-  <div id="error-box"></div>
+    <!-- Chat Area -->
+    <div class="chat-area">
 
-  <!-- Results -->
-  <div id="results" class="result-section">
-
-    <!-- Legal Context Pills -->
-    <div id="context-row" class="context-row"></div>
-
-    <!-- AI Explanation -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title"><span class="icon">🧠</span> AI Legal Analysis</div>
-        <div class="confidence-bar-wrap">
-          <span id="confidence-label">—</span>
-          <div class="confidence-bar">
-            <div class="confidence-fill" id="confidence-fill" style="width:0%"></div>
+      <!-- Messages / Welcome -->
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">&#9878;</div>
+          <h2>Welcome to Nyaya-Setu</h2>
+          <p>
+            I'm your AI legal research assistant. Tell me about your legal situation
+            and I'll guide you through it step by step — gathering facts, finding
+            relevant precedents, and explaining your rights in plain English.
+          </p>
+          <div class="welcome-examples">
+            <div class="example-chip" onclick="sendExample(this)">I got into a road accident</div>
+            <div class="example-chip" onclick="sendExample(this)">My landlord is trying to evict me</div>
+            <div class="example-chip" onclick="sendExample(this)">Someone forged my signature</div>
+            <div class="example-chip" onclick="sendExample(this)">A cheque I received bounced</div>
           </div>
         </div>
       </div>
-      <p id="ai-summary"></p>
-      <div id="source-tag-wrap"></div>
-    </div>
 
-    <!-- What To Do -->
-    <div class="card" id="what-to-do-card" style="display:none">
-      <div class="card-header">
-        <div class="card-title"><span class="icon">📋</span> What You Should Do</div>
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-row">
+          <input type="text" id="userInput"
+                 placeholder="Describe your legal situation..."
+                 autocomplete="off"
+                 onkeydown="if(event.key==='Enter') sendMessage()">
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#10148;</button>
+        </div>
       </div>
-      <p id="what-to-do-text"></p>
+
     </div>
+  </div>
 
-    <!-- Applicable Law -->
-    <div class="card" id="law-card" style="display:none">
-      <div class="card-header">
-        <div class="card-title"><span class="icon">📜</span> Applicable Law</div>
-      </div>
-      <div class="law-grid" id="law-grid"></div>
-    </div>
+  <script>
+    // ── State ──────────────────────────────────────────
+    let conversationId = null;
+    let isLoading = false;
 
-    <!-- Relevant Cases -->
-    <div class="card" id="cases-card" style="display:none">
-      <div class="card-header">
-        <div class="card-title"><span class="icon">⚖️</span> Judicial Precedents</div>
-      </div>
-      <div class="cases-list" id="cases-list"></div>
-    </div>
+    const messagesEl  = document.getElementById('messages');
+    const welcomeEl   = document.getElementById('welcome');
+    const inputEl     = document.getElementById('userInput');
+    const sendBtn     = document.getElementById('sendBtn');
+    const slotListEl  = document.getElementById('slotList');
+    const progressEl  = document.getElementById('slotProgress');
+    const progressFill= document.getElementById('progressFill');
+    const progressLbl = document.getElementById('progressLabel');
+    const statusDot   = document.getElementById('statusDot');
+    const statusLabel = document.getElementById('statusLabel');
 
-    <!-- Disclaimer -->
-    <div class="card">
-      <p class="disclaimer" id="disclaimer-text">
-        This is AI-assisted legal research based on verified judicial precedents.
-        It is not legal advice. Please consult a qualified advocate.
-      </p>
-    </div>
-
-  </div><!-- /#results -->
-
-</div><!-- /.app -->
-
-<script>
-  const API = '';   // empty = same origin (FastAPI serves both UI and API)
-  let currentQuery = '';
-  let stepTimer = null;
-
-  function setQuery(el) {
-    document.getElementById('query-input').value = el.textContent.trim();
-  }
-
-  function clearAll() {
-    document.getElementById('query-input').value = '';
-    document.getElementById('results').classList.remove('visible');
-    document.getElementById('error-box').classList.remove('visible');
-    hideStatus();
-  }
-
-  // ── Animate pipeline steps ──────────────────────────────────────
-  const STEPS = ['step-1','step-2','step-3','step-4','step-5'];
-  let stepIdx = 0;
-
-  function showStatus() {
-    document.getElementById('status-bar').classList.add('visible');
-    STEPS.forEach(s => {
-      const el = document.getElementById(s);
-      el.className = 'step-badge';
-    });
-    stepIdx = 0;
-    activateStep();
-  }
-
-  function activateStep() {
-    if (stepIdx >= STEPS.length) return;
-    if (stepIdx > 0) {
-      document.getElementById(STEPS[stepIdx-1]).className = 'step-badge done';
+    // ── New Chat ───────────────────────────────────────
+    function newChat() {
+      conversationId = null;
+      messagesEl.innerHTML = '';
+      messagesEl.appendChild(welcomeEl);
+      welcomeEl.style.display = 'flex';
+      slotListEl.innerHTML = '<div style="padding:20px 0;color:var(--text-muted);font-size:13px;text-align:center;">Start a conversation to see extracted legal facts here.</div>';
+      progressEl.style.display = 'none';
+      inputEl.focus();
     }
-    document.getElementById(STEPS[stepIdx]).className = 'step-badge active';
-    stepIdx++;
-    stepTimer = setTimeout(activateStep, 1800);
-  }
 
-  function hideStatus() {
-    clearTimeout(stepTimer);
-    STEPS.forEach(s => {
-      document.getElementById(s).className = 'step-badge done';
-    });
-    setTimeout(() => {
-      document.getElementById('status-bar').classList.remove('visible');
-      STEPS.forEach(s => { document.getElementById(s).className = 'step-badge'; });
-    }, 800);
-  }
+    // ── Send Example Chip ──────────────────────────────
+    function sendExample(el) {
+      inputEl.value = el.textContent;
+      sendMessage();
+    }
 
-  // ── Main query submission ───────────────────────────────────────
-  async function submitQuery() {
-    const q = document.getElementById('query-input').value.trim();
-    if (!q) return;
-    currentQuery = q;
+    // ── Send Message ───────────────────────────────────
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text || isLoading) return;
 
-    document.getElementById('search-btn').disabled = true;
-    document.getElementById('results').classList.remove('visible');
-    document.getElementById('error-box').classList.remove('visible');
-    showStatus();
+      // Hide welcome
+      welcomeEl.style.display = 'none';
 
-    try {
-      const resp = await fetch(`${API}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.detail || `Server error ${resp.status}`);
+      // Add user bubble
+      addBubble('user', text);
+      inputEl.value = '';
+      inputEl.focus();
+
+      // Show thinking indicator
+      const thinkingEl = showThinking();
+      setStatus('thinking', 'Analyzing...');
+
+      isLoading = true;
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            message: text,
+          }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Remove thinking indicator
+        thinkingEl.remove();
+
+        // Store conversation ID
+        conversationId = data.conversation_id;
+
+        // Update sidebar slots
+        updateSlots(data.memory, data.slot_status);
+
+        if (data.type === 'question') {
+          // Bot is asking a follow-up question
+          addBubble('bot', data.message);
+          setStatus('ready', 'Gathering facts...');
+        } else if (data.type === 'answer') {
+          // Full legal analysis
+          addAnalysisCard(data.message, data.full_response);
+          setStatus('ready', 'Analysis complete');
+        }
+
+      } catch (err) {
+        thinkingEl.remove();
+        addBubble('bot', 'Sorry, an error occurred: ' + err.message);
+        setStatus('error', 'Error');
       }
-      const data = await resp.json();
-      hideStatus();
-      renderResults(data);
-    } catch (err) {
-      hideStatus();
-      showError(err.message);
-    } finally {
-      document.getElementById('search-btn').disabled = false;
-    }
-  }
 
-  // Keyboard shortcut: Ctrl+Enter / Cmd+Enter
-  document.getElementById('query-input').addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitQuery();
-  });
-
-  // ── Render results ──────────────────────────────────────────────
-  function renderResults(data) {
-    // Legal context pills
-    const lq = data.legal_query || {};
-    const pills = [];
-    if (lq.legal_domain) pills.push(`<span class="context-pill pill-domain">⚡ ${esc(lq.legal_domain)}</span>`);
-    if (lq.incident_type) pills.push(`<span class="context-pill pill-domain">📌 ${esc(lq.incident_type)}</span>`);
-    (lq.suggested_acts || []).forEach(a => pills.push(`<span class="context-pill pill-act">📜 ${esc(a)}</span>`));
-    (lq.suggested_sections || []).slice(0,4).forEach(s => pills.push(`<span class="context-pill pill-section">§ ${esc(s)}</span>`));
-    document.getElementById('context-row').innerHTML = pills.join('');
-
-    // Confidence bar
-    const conf = Math.round((data.confidence || 0) * 100);
-    document.getElementById('confidence-label').textContent = `${conf}% confidence`;
-    document.getElementById('confidence-fill').style.width = `${conf}%`;
-
-    // Summary
-    document.getElementById('ai-summary').textContent = data.summary || 'No summary available.';
-
-    // Source tag
-    const src = data.knowledge_source || 'permanent_kg';
-    const srcMap = {
-      permanent_kg:   ['source-permanent', '✓ Verified Knowledge Base'],
-      temporary_pool: ['source-web',       '⚡ Web-Retrieved (Staging)'],
-      hybrid:         ['source-hybrid',    '◉ Hybrid Sources'],
-    };
-    const [cls, label] = srcMap[src] || srcMap.permanent_kg;
-    document.getElementById('source-tag-wrap').innerHTML =
-      `<span class="source-tag ${cls}">${label}</span>`;
-
-    // What to do
-    if (data.what_to_do) {
-      document.getElementById('what-to-do-text').textContent = data.what_to_do;
-      document.getElementById('what-to-do-card').style.display = '';
+      isLoading = false;
+      sendBtn.disabled = false;
     }
 
-    // Applicable law
-    const acts     = data.applicable_acts || [];
-    const sections = data.applicable_sections || [];
-    if (acts.length || sections.length) {
-      const items = [
-        ...acts.map(a => `<div class="law-item"><div class="law-item-label">Act</div><div class="law-item-value">${esc(a)}</div></div>`),
-        ...sections.map(s => `<div class="law-item"><div class="law-item-label">Section</div><div class="law-item-value">§ ${esc(s)}</div></div>`),
-      ];
-      document.getElementById('law-grid').innerHTML = items.join('');
-      document.getElementById('law-card').style.display = '';
+    // ── Add chat bubble ────────────────────────────────
+    function addBubble(role, text) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      const avatarIcon = role === 'user' ? '&#128100;' : '&#9878;';
+      div.innerHTML = `
+        <div class="msg-avatar">${avatarIcon}</div>
+        <div class="msg-content">${escapeHtml(text)}</div>
+      `;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    // Precedent cases
-    const precedents = data.precedents || [];
-    if (precedents.length) {
-      const html = precedents.map((p, i) => `
-        <div class="case-card" id="case-${i}">
-          <div class="case-top">
-            <div class="case-name">${esc(p.case || 'Unknown Case')}</div>
-            <span class="score-badge">#${i+1}</span>
-          </div>
-          <div class="case-meta">
-            ${p.court ? `<span class="meta-chip">🏛 ${esc(p.court)}</span>` : ''}
-            ${p.date  ? `<span class="meta-chip">📅 ${esc(p.date)}</span>`  : ''}
-          </div>
-          ${p.held ? `<div class="case-held">${esc(p.held)}</div>` : ''}
-          <div class="case-actions">
-            <button class="feedback-btn" id="up-${i}"
-              onclick="sendFeedback('${esc(p.case||'case')}', 1, ${i})">👍 Helpful</button>
-            <button class="feedback-btn" id="dn-${i}"
-              onclick="sendFeedback('${esc(p.case||'case')}', -1, ${i})">👎 Not Helpful</button>
-            ${p.relevance ? `<span class="case-relevance">${esc(p.relevance)}</span>` : ''}
-          </div>
+    // ── Show thinking dots ─────────────────────────────
+    function showThinking() {
+      const div = document.createElement('div');
+      div.className = 'thinking';
+      div.innerHTML = `
+        <div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;">&#9878;</div>
+        <div class="msg-content">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span style="margin-left:6px;">Thinking...</span>
         </div>
-      `).join('');
-      document.getElementById('cases-list').innerHTML = html;
-      document.getElementById('cases-card').style.display = '';
+      `;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
     }
 
-    // Disclaimer
-    if (data.disclaimer) {
-      document.getElementById('disclaimer-text').textContent = data.disclaimer;
+    // ── Add Legal Analysis Card ────────────────────────
+    function addAnalysisCard(summary, fullResponse) {
+      const div = document.createElement('div');
+      div.className = 'message bot';
+
+      let html = `
+        <div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;">&#9878;</div>
+        <div style="flex:1;">
+          <div class="analysis-card">
+            <h3>&#9878; Legal Analysis</h3>
+      `;
+
+      // Summary
+      if (fullResponse && fullResponse.summary) {
+        html += `
+          <div class="analysis-section">
+            <h4>Summary</h4>
+            <p>${escapeHtml(fullResponse.summary)}</p>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="analysis-section">
+            <h4>Summary</h4>
+            <p>${escapeHtml(summary)}</p>
+          </div>
+        `;
+      }
+
+      // Acts & Sections
+      if (fullResponse) {
+        const acts = fullResponse.applicable_acts || [];
+        const secs = fullResponse.applicable_sections || [];
+        if (acts.length || secs.length) {
+          html += `<div class="analysis-section"><h4>Applicable Law</h4><div class="tag-list">`;
+          acts.forEach(a => { html += `<span class="tag">${escapeHtml(a)}</span>`; });
+          secs.forEach(s => { html += `<span class="tag gold">Section ${escapeHtml(s)}</span>`; });
+          html += `</div></div>`;
+        }
+
+        // Precedents
+        const precs = fullResponse.precedents || [];
+        if (precs.length) {
+          html += `<div class="analysis-section"><h4>Judicial Precedents</h4>`;
+          precs.forEach(p => {
+            html += `
+              <div class="precedent-item">
+                <div class="case-name">${escapeHtml(p.case || p.case_id || 'Unnamed Case')}</div>
+                <div class="case-detail">
+                  ${p.court ? '<strong>Court:</strong> ' + escapeHtml(p.court) + '<br>' : ''}
+                  ${p.held ? '<strong>Held:</strong> ' + escapeHtml(p.held) + '<br>' : ''}
+                  ${p.relevance ? '<strong>Relevance:</strong> ' + escapeHtml(p.relevance) : ''}
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        // What to do
+        const wtd = fullResponse.what_to_do;
+        if (wtd) {
+          html += `
+            <div class="analysis-section">
+              <h4>What You Should Do</h4>
+              <div class="what-to-do">${escapeHtml(wtd)}</div>
+            </div>
+          `;
+        }
+
+        // Disclaimer
+        const disc = fullResponse.disclaimer;
+        if (disc) {
+          html += `<div class="disclaimer-box">${escapeHtml(disc)}</div>`;
+        }
+      }
+
+      html += `</div></div>`;
+      div.innerHTML = html;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    // Show results panel
-    document.getElementById('results').classList.add('visible');
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+    // ── Update Sidebar Slots ───────────────────────────
+    function updateSlots(memory, slotStatus) {
+      if (!memory) return;
 
-  // ── Feedback ────────────────────────────────────────────────────
-  async function sendFeedback(caseId, rating, idx) {
-    const upBtn = document.getElementById(`up-${idx}`);
-    const dnBtn = document.getElementById(`dn-${idx}`);
+      const slotLabels = {
+        incident: '&#128680; Incident',
+        legal_domain: '&#9878; Legal Domain',
+        vehicle: '&#128663; Vehicle',
+        state: '&#127758; State',
+        city: '&#127961; City',
+        injury: '&#129657; Injury',
+        fir_filed: '&#128196; FIR Filed',
+        sections: '&#167; Sections',
+        acts: '&#128214; Acts',
+        current_goal: '&#127919; Goal',
+        property_type: '&#127968; Property Type',
+        dispute_type: '&#128275; Dispute Type',
+        cheque_amount: '&#128176; Amount',
+        bank: '&#127974; Bank',
+        notice_sent: '&#9993; Notice',
+        court: '&#127963; Court',
+        agreement_exists: '&#128221; Agreement',
+      };
 
-    // Visual state
-    upBtn.className = 'feedback-btn' + (rating===1  ? ' voted-up'   : '');
-    dnBtn.className = 'feedback-btn' + (rating===-1 ? ' voted-down' : '');
+      let html = '';
+      for (const [key, val] of Object.entries(memory)) {
+        const label = slotLabels[key] || key.replace(/_/g, ' ');
+        let displayVal = val;
+        if (Array.isArray(val)) displayVal = val.join(', ');
+        if (typeof val === 'boolean') displayVal = val ? 'Yes' : 'No';
 
-    try {
-      await fetch(`${API}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: currentQuery, case_id: caseId, rating }),
-      });
-    } catch (_) { /* silent — feedback is best-effort */ }
-  }
+        html += `
+          <div class="slot-item">
+            <div class="slot-icon filled">&#10003;</div>
+            <div>
+              <div class="slot-label">${label}</div>
+              <div class="slot-value">${escapeHtml(String(displayVal))}</div>
+            </div>
+          </div>
+        `;
+      }
 
-  // ── Error display ───────────────────────────────────────────────
-  function showError(msg) {
-    const box = document.getElementById('error-box');
-    box.textContent = `⚠ ${msg}`;
-    box.classList.add('visible');
-  }
+      if (!html) {
+        html = '<div style="padding:20px 0;color:var(--text-muted);font-size:13px;text-align:center;">No facts extracted yet.</div>';
+      }
 
-  // ── Utility ─────────────────────────────────────────────────────
-  function esc(str) {
-    return String(str)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;');
-  }
-</script>
+      slotListEl.innerHTML = html;
+
+      // Update progress bar
+      if (slotStatus) {
+        progressEl.style.display = 'block';
+        const filled = slotStatus.filled || 0;
+        const total = slotStatus.required || 1;
+        const pct = Math.min(Math.round((filled / total) * 100), 100);
+        progressFill.style.width = pct + '%';
+        progressLbl.textContent = `${filled} / ${total} required slots filled`;
+      }
+    }
+
+    // ── Status indicator ───────────────────────────────
+    function setStatus(state, label) {
+      statusLabel.textContent = label;
+      if (state === 'thinking') {
+        statusDot.style.background = 'var(--gold)';
+      } else if (state === 'error') {
+        statusDot.style.background = 'var(--red)';
+      } else {
+        statusDot.style.background = 'var(--green)';
+      }
+    }
+
+    // ── Escape HTML ────────────────────────────────────
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ── Focus input on load ────────────────────────────
+    inputEl.focus();
+  </script>
 </body>
 </html>

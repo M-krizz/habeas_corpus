@@ -16,8 +16,13 @@ rather than invent law.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from evidence.schema import CaseEvidence
 from query_understanding.schema import LegalQuery
+
+if TYPE_CHECKING:
+    from conversation.memory import ConversationMemory
 
 
 # ---------------------------------------------------------------------------
@@ -88,9 +93,21 @@ CASE {rank}: {case_name}
 {passages}
 """
 
+_CONVERSATION_CONTEXT = """\
+
+CONVERSATION CONTEXT (what the user has told us step by step):
+{conversation_summary}
+
+The user has had {turn_count} exchange(s) with the system. Use this context
+to understand their specific situation and tailor your explanation accordingly.
+"""
+
 _FOOTER = """\
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Analyze the user's legal situation thoroughly using the legal context and above {n_cases} verified judicial precedent(s). Remember: provide an enriching, supportive statutory explanation, but only cite case names found in the verified evidence above!
+Analyze the user's legal situation thoroughly using the conversation context,
+legal context, and above {n_cases} verified judicial precedent(s).
+Remember: provide an enriching, supportive statutory explanation,
+but only cite case names found in the verified evidence above!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -102,14 +119,17 @@ Analyze the user's legal situation thoroughly using the legal context and above 
 def build_prompt(
     legal_query: LegalQuery,
     evidence:    list[CaseEvidence],
+    memory:      "ConversationMemory | None" = None,
 ) -> str:
     """
-    Construct the full LLM prompt from structured legal query + case evidence.
+    Construct the full LLM prompt from structured legal query + case evidence
+    + optional conversation memory context.
 
     Parameters
     ----------
-    legal_query : LegalQuery from the concept mapper
+    legal_query : LegalQuery from the concept mapper or rewriter
     evidence    : list[CaseEvidence] from the evidence aggregator
+    memory      : optional ConversationMemory from the Conversation Brain
 
     Returns
     -------
@@ -139,8 +159,16 @@ def build_prompt(
             f"• The user asked their question in {lang_name}.\n"
             f"• You MUST write your 'summary' and 'what_to_do' fields in {script_note}.\n"
             f"• Keep formal case names, court names, and Act names in English for legal accuracy.\n"
+            f"• Ensure all JSON fields are valid UTF-8 strings.\n"
         )
         parts.append(multi_inst)
+
+    # Conversation context (multi-turn only)
+    if memory is not None:
+        parts.append(_CONVERSATION_CONTEXT.format(
+            conversation_summary=memory.summary_text(),
+            turn_count=memory.turn_count,
+        ))
 
     # Query context section
     parts.append(_QUERY_SECTION.format(

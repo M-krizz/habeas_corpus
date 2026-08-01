@@ -90,7 +90,7 @@ def hybrid_rank(
     ranked = sorted(merged, key=lambda x: x["final_score"], reverse=True)
     result = ranked[:top_k]
 
-    print(f"[hybrid_ranker] {len(all_case_ids)} unique cases → "
+    print(f"[hybrid_ranker] {len(all_case_ids)} unique cases -> "
           f"top {len(result)} after hybrid ranking.")
     for r in result[:3]:
         print(f"  {r['case_id']:40s}  "

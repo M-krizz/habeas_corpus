@@ -110,7 +110,7 @@ def stage_case(web_case: dict) -> str:
         "retrieval_count":  record["_retrieval_count"],
     }
     _save_index(index)
-    print(f"[staging_pool] Staged case '{web_case.get('title','')[:60]}' → {h}")
+    print(f"[staging_pool] Staged case '{web_case.get('title','')[:60]}' -> {h}")
     return h
 
 

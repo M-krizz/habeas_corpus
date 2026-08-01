@@ -1,48 +1,45 @@
 """
-api/pipeline.py — Habeas Corpus
-=================================
-Master orchestrator. Called by the FastAPI /query endpoint.
+api/pipeline.py — Nyaya-Setu Knowledge Brain + Reasoning Brain
+================================================================
+Master orchestrator. Called by both:
+  - POST /chat  (multi-turn: receives LegalQuery from Conversation Brain)
+  - POST /query (legacy single-shot: receives raw query string)
 
-Implements the full pipeline:
+Architecture:
 
-    User Query
-        │
-        ▼
-    Legal Concept Mapper        (query_understanding)
-        │
-        ├──► FAISS Semantic Search   (semantic_retrieval)
-        ├──► Neo4j Graph Search      (retrieval.graph_retriever)
-        │
-        ▼
-    Hybrid Ranking              (retrieval.hybrid_ranker)
-        │
-        ▼
-    Feedback Boost              (feedback.reranker)
-        │
-        ▼
-    Confidence Estimation       (retrieval.confidence_estimator)
-        │
-    ┌───┴────────────────────────────┐
-    │ High confidence (≥ 0.60)       │ Low confidence (< 0.60)
+    Conversation Brain
+         │
+         ▼
+    LegalQuery (rewritten from structured memory)
+         │
+    ┌────┴────────────────┐
+    │                     │
+    ▼                     ▼
+  FAISS Search      Neo4j Graph Search
+    │                     │
+    └────────┬────────────┘
+             ▼
+    Hybrid Ranking → Feedback Boost → Confidence Estimation
+             │
+    ┌────────┴────────────────────────┐
+    │ High confidence (>= 0.72)      │ Low confidence (< 0.72)
     ▼                                ▼
     Evidence Aggregator         Indian Kanoon Retrieval
     (permanent KG)              → Stage → Temp Evidence
-        │                                │
-        └──────────────┬─────────────────┘
-                       ▼
-                LLM Legal Reasoner     (reasoning)
-                       │
-                       ▼
-                ReasoningResponse
-                       │
-                       ▼
-        Background Indexer (async)  ← promotes staging cases later
+         │                                │
+         └──────────────┬─────────────────┘
+                        ▼
+                 Reasoning Brain (LLM)
+                        │
+                        ▼
+                 ReasoningResponse
 """
 
 from __future__ import annotations
 
+from conversation.memory import ConversationMemory
 from query_understanding.legal_concept_mapper import map_legal_concepts
-from query_understanding.schema import ReasoningResponse
+from query_understanding.schema import LegalQuery, ReasoningResponse
 from semantic_retrieval.pipeline import search_cases as faiss_search_cases
 from retrieval.graph_retriever import graph_search
 from retrieval.hybrid_ranker import hybrid_rank
@@ -52,30 +49,35 @@ from evidence.aggregator import aggregate_evidence, aggregate_from_web
 from reasoning.legal_reasoner import reason
 
 
-async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
+async def run_query_with_legal_query(
+    legal_query: LegalQuery,
+    memory: ConversationMemory | None = None,
+) -> tuple[ReasoningResponse, list[str]]:
     """
-    Run the complete Habeas Corpus pipeline for a user query.
+    Run the Knowledge Brain + Reasoning Brain using a pre-built LegalQuery.
+
+    Called by the Conversation Brain after slot-filling is complete.
+    The LegalQuery has been rewritten from structured memory — not from
+    the user's raw text.
 
     Parameters
     ----------
-    raw_query : plain-English user query string
+    legal_query : structured legal query (from rewriter or concept mapper)
+    memory      : optional ConversationMemory for Reasoning Brain context
 
     Returns
     -------
     tuple of:
         ReasoningResponse  — the full structured answer
         list[str]          — staging hashes of new cases added (may be empty)
-                             used by the caller to schedule background indexing
     """
     print(f"\n{'='*60}")
-    print(f"[pipeline] New query: '{raw_query}'")
+    print(f"[pipeline] Processing query: domain={legal_query.legal_domain}, "
+          f"incident={legal_query.incident_type}")
     print(f"{'='*60}")
 
-    # ── Step 1: Legal Concept Mapping ───────────────────────────────
-    legal_query = map_legal_concepts(raw_query)
-
-    # ── Step 2: Parallel Retrieval ──────────────────────────────────
-    # FAISS: retrieve top 20 semantic chunks → case-level scores
+    # ── Step 1: Parallel Retrieval ──────────────────────────────────
+    # FAISS: use the rewritten search text (not raw user message)
     faiss_results = faiss_search_cases(
         query  = legal_query.search_text,
         top_k  = 20,
@@ -85,18 +87,18 @@ async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
     # Neo4j: search by acts, sections, keywords
     graph_results = graph_search(legal_query, top_k=15)
 
-    # ── Step 3: Hybrid Ranking ──────────────────────────────────────
+    # ── Step 2: Hybrid Ranking ──────────────────────────────────────
     ranked = hybrid_rank(faiss_results, graph_results, top_k=10)
 
-    # ── Step 4: Feedback Boost (Learning-to-Rank) ───────────────────
+    # ── Step 3: Feedback Boost (Learning-to-Rank) ───────────────────
     ranked = apply_feedback_boost(ranked)
 
-    # ── Step 5: Confidence Estimation ──────────────────────────────
+    # ── Step 4: Confidence Estimation ──────────────────────────────
     confidence = estimate_confidence(ranked)
     print(f"[pipeline] Confidence: {confidence:.3f} "
           f"(threshold={CONFIDENCE_THRESHOLD})")
 
-    # ── Step 6: Evidence Assembly ───────────────────────────────────
+    # ── Step 5: Evidence Assembly ───────────────────────────────────
     new_staging_hashes: list[str] = []
 
     if confidence >= CONFIDENCE_THRESHOLD:
@@ -106,10 +108,9 @@ async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
 
     else:
         # Low confidence → Indian Kanoon fallback
-        print(f"[pipeline] Low confidence → triggering Indian Kanoon retrieval...")
+        print(f"[pipeline] Low confidence -> triggering Indian Kanoon retrieval...")
         from knowledge_acquisition.web_retriever import search_indian_kanoon
         from knowledge_acquisition.staging_pool import stage_case
-        from evidence.aggregator import aggregate_from_web
 
         web_results = search_indian_kanoon(legal_query, max_results=5)
 
@@ -123,8 +124,8 @@ async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
         evidence     = kg_evidence + web_evidence
         knowledge_source = "hybrid" if kg_evidence else "temporary_pool"
 
-    # ── Step 7: LLM Reasoning ───────────────────────────────────────
-    response = reason(legal_query, evidence, confidence)
+    # ── Step 6: LLM Reasoning ───────────────────────────────────────
+    response = reason(legal_query, evidence, confidence, memory=memory)
     response.knowledge_source = knowledge_source
 
     print(f"[pipeline] Done. Source={knowledge_source}, "
@@ -132,3 +133,29 @@ async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
           f"New staging={len(new_staging_hashes)}")
 
     return response, new_staging_hashes
+
+
+async def run_query(raw_query: str) -> tuple[ReasoningResponse, list[str]]:
+    """
+    Legacy single-shot pipeline entry point.
+
+    Runs the Legal Concept Mapper on the raw query string to produce
+    a LegalQuery, then delegates to run_query_with_legal_query().
+
+    Parameters
+    ----------
+    raw_query : plain-English user query string
+
+    Returns
+    -------
+    tuple of (ReasoningResponse, list[str] staging hashes)
+    """
+    print(f"\n{'='*60}")
+    print(f"[pipeline] New query: '{raw_query}'")
+    print(f"{'='*60}")
+
+    # Step 1: Legal Concept Mapping (single-shot, no conversation memory)
+    legal_query = map_legal_concepts(raw_query)
+
+    # Step 2: Run through Knowledge + Reasoning Brains
+    return await run_query_with_legal_query(legal_query, memory=None)

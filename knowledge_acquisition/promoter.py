@@ -73,7 +73,7 @@ def promote(staging_hash: str, case: dict) -> bool:
         _append_to_faiss(case_id, cleaned, case.get("url", ""))
 
         update_status(staging_hash, STATUS_PROMOTED)
-        print(f"[promoter] ✓ Promoted '{title[:60]}' → Neo4j + FAISS")
+        print(f"[promoter] [OK] Promoted '{title[:60]}' -> Neo4j + FAISS")
         return True
 
     except Exception as exc:
