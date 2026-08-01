@@ -62,19 +62,28 @@ def _get_gemini():
 
 # ---------------------------------------------------------------------------
 # LLM prompt
-# ---------------------------------------------------------------------------
-# Language detector
-# ---------------------------------------------------------------------------
-
 def detect_language(text: str) -> str:
     """
     Detect language of input query.
-    Returns ISO language code: 'ta' (Tamil), 'hi' (Hindi), or 'en' (English default).
+    Returns: 'ta' (Tamil script), 'ta_roman' (Tanglish / Romanized Tamil),
+             'hi' (Hindi script), 'hi_roman' (Hinglish), or 'en' (English default).
     """
     if re.search(r"[\u0B80-\u0BFF]", text):
         return "ta"
     if re.search(r"[\u0900-\u097F]", text):
         return "hi"
+
+    # Tanglish / Romanized Tamil markers
+    tanglish_words = {
+        "vandi", "wandi", "vaandi", "vandiye", "oruthan", "modhitan", "kidaikuma",
+        "kedaikuma", "epdi", "iruka", "pudichu", "panna", "pannitan", "pannitanga",
+        "pannalam", "casela", "policela", "enaku", "enakku", "nalla", "solunga",
+        "solungha", "engalukku", "aachu", "aayiduchu", "varuma", "kuduka", "varum"
+    }
+    tokens = set(re.findall(r"[a-z]+", text.lower()))
+    if tokens & tanglish_words:
+        return "ta_roman"
+
     return "en"
 
 
@@ -85,7 +94,7 @@ def detect_language(text: str) -> str:
 _SYSTEM_PROMPT = """\
 You are a multilingual legal concept extraction engine for the Habeas Corpus Indian Legal Research System.
 
-Your task is to analyse a user's legal query (which may be in English, Tamil, Hindi, or another Indian language) and return ONLY a JSON object with the following structure.
+Your task is to analyse a user's legal query (which may be in English, native Tamil script, native Hindi script, OR Romanized code-mixed languages like Tanglish e.g. "en vandi la oruthan hit pannitan") and return ONLY a JSON object with the following structure.
 
 DO NOT answer the legal question.
 DO NOT give legal advice.
@@ -93,8 +102,9 @@ ONLY extract and map concepts.
 
 Required JSON structure:
 {
-  "detected_language": "<string: ISO code like 'en', 'ta', 'hi'>",
-  "query_in_english": "<string: clear English translation and legal summary of user query>",
+  "detected_language": "<string: 'en' | 'ta' | 'ta_roman' (Tanglish) | 'hi' | 'hi_roman'>",
+  "query_in_english": "<string: formal English legal translation & research statement of user query>",
+  "query_in_tamil_script": "<string: native Tamil script transliteration/translation if query is in Tanglish/Tamil>",
   "legal_domain": "<string: primary area of Indian law>",
   "incident_type": "<string: specific nature of incident in English>",
   "keywords": ["<term1>", "<term2>", ...],
@@ -105,8 +115,9 @@ Required JSON structure:
 }
 
 Guidelines:
-- detected_language: 'en' for English, 'ta' for Tamil, 'hi' for Hindi, etc.
-- query_in_english: Always provide a clear English translation if query is non-English; if already English, keep as is.
+- detected_language: 'ta_roman' for Tanglish (Tamil in English alphabet e.g. "en vandi la oruthan hit pannitan"), 'ta' for Tamil script, 'en' for English.
+- query_in_english: Convert Tanglish or any non-English query into formal English legal research statement. E.g. "en vandi la oruthan hit pannitan" -> "Motor vehicle collision where another driver struck petitioner's vehicle causing property damage and compensation claim under Motor Vehicles Act."
+- query_in_tamil_script: If query is Tanglish or Tamil, provide the exact sentence in native Tamil script: "என் வண்டியை ஒருவர் மோதிவிட்டார். எனக்கு இழப்பீடு கிடைக்குமா?"
 - legal_domain: Choose from: Motor Vehicles, Criminal, Property, Family, Consumer,
   Labour, Contract, Constitutional, Intellectual Property, Environmental, Tax, Other
 - suggested_acts: Use full Indian statute names in English (e.g. "Motor Vehicles Act",
@@ -115,7 +126,7 @@ Guidelines:
   explicitly mentioned or unambiguously implied.
 - expanded_concepts: Legal doctrines in English (e.g. "tort liability", "res ipsa loquitur",
   "contributory negligence", "mens rea", "promissory estoppel")
-- keywords: Mix of legal and factual terms in BOTH user language and English useful for document retrieval
+- keywords: Mix of legal and factual terms in English, native Tamil script, and Tanglish useful for document retrieval
 - Return ONLY valid JSON. No markdown, no explanation, no code fences.
 """
 

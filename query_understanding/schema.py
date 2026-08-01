@@ -28,6 +28,10 @@ class LegalQuery(BaseModel):
         default="",
         description="English translation or legal summary of user query if non-English."
     )
+    query_in_tamil_script: str = Field(
+        default="",
+        description="Native Tamil script transliteration if query was in Tanglish or Romanized Tamil."
+    )
 
     legal_domain: str = Field(
         description="High-level area of law. E.g. 'Motor Vehicles', 'Criminal', "
@@ -67,14 +71,16 @@ class LegalQuery(BaseModel):
         """
         Produce a single enriched search string for FAISS embedding.
 
-        Combines original query (if non-English), English translation, incident type,
-        keywords, acts, and expanded concepts so BGE-M3 captures cross-lingual
-        semantic meaning.
+        Combines English translation, Tamil script transliteration, original query,
+        incident type, keywords, acts, and expanded concepts so BGE-M3 captures
+        cross-lingual semantic meaning.
         """
         query_parts = []
-        if self.query_in_english and self.query_in_english != self.original_query:
+        if self.query_in_english:
             query_parts.append(self.query_in_english)
-        else:
+        if self.query_in_tamil_script:
+            query_parts.append(self.query_in_tamil_script)
+        if self.original_query not in query_parts:
             query_parts.append(self.original_query)
 
         parts = (

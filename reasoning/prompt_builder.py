@@ -119,14 +119,25 @@ def build_prompt(
 
     # Multilingual response instruction if user asked in non-English
     lang = getattr(legal_query, "detected_language", "en")
-    lang_names = {"ta": "Tamil", "hi": "Hindi", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam"}
+    lang_names = {
+        "ta": "Tamil",
+        "ta_roman": "Tanglish (Tamil in Roman script)",
+        "hi": "Hindi",
+        "hi_roman": "Hinglish (Hindi in Roman script)",
+        "te": "Telugu",
+        "kn": "Kannada",
+        "ml": "Malayalam",
+    }
     if lang != "en" and lang in lang_names:
         lang_name = lang_names[lang]
+        if lang == "ta_roman":
+            script_note = "native Tamil script (e.g., 'உங்கள் சூழ்நிலைக்கு ஒத்த வழக்குகளில்...') OR clear bilingual Tamil/English"
+        else:
+            script_note = f"native {lang_name} script"
         multi_inst = (
             f"\nCRITICAL MULTILINGUAL INSTRUCTION:\n"
-            f"• The user asked their question in {lang_name} (language code: {lang}).\n"
-            f"• You MUST write your 'summary' and 'what_to_do' fields in native {lang_name} script "
-            f"(e.g., Tamil text: 'உங்கள் சூழ்நிலைக்கு ஒத்த வழக்குகளில், மோட்டார் வாகனச் சட்டம் பிரிவு 166-ன் கீழ்...').\n"
+            f"• The user asked their question in {lang_name}.\n"
+            f"• You MUST write your 'summary' and 'what_to_do' fields in {script_note}.\n"
             f"• Keep formal case names, court names, and Act names in English for legal accuracy.\n"
         )
         parts.append(multi_inst)
