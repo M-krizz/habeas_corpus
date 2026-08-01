@@ -72,18 +72,36 @@ def _parse_response(raw: str, legal_query: LegalQuery,
                    list({s for ev in evidence for s in ev.sections})
 
     precedents = data.get("precedents", [])
+    ev_map = {ev.case_id: ev for ev in evidence}
+    ev_name_map = {ev.case_name: ev for ev in evidence if ev.case_name}
+
     if not precedents:
         # Build precedents from CaseEvidence if LLM didn't produce them
         precedents = [
             {
-                "case":      ev.case_name or ev.case_id,
-                "court":     ev.court,
-                "date":      ev.decision_date,
-                "held":      ev.top_chunk_text[:300] if ev.top_chunk_text else "",
-                "relevance": f"Score: {ev.final_score:.2f}",
+                "case":            ev.case_name or ev.case_id,
+                "case_id":         ev.case_id,
+                "court":           ev.court,
+                "date":            ev.decision_date,
+                "held":            ev.top_chunk_text[:300] if ev.top_chunk_text else "",
+                "relevance":       f"Score: {ev.final_score:.2f}",
+                "url":             getattr(ev, "url", ""),
+                "is_web_resource": (ev.source == "web_retrieved" or getattr(ev, "url", "").startswith("http") or "tavily" in str(ev.case_id)),
             }
             for ev in evidence
         ]
+    else:
+        for idx, p in enumerate(precedents):
+            cid = p.get("case_id")
+            cname = p.get("case")
+            ev = ev_map.get(cid) or ev_name_map.get(cname) or (evidence[idx] if idx < len(evidence) else None)
+            if ev:
+                p["case_id"] = ev.case_id
+                if hasattr(ev, "url") and getattr(ev, "url"):
+                    p["url"] = ev.url
+                p["is_web_resource"] = (ev.source == "web_retrieved" or getattr(p, "url", "").startswith("http") or "tavily" in str(p.get("case_id", "")))
+            else:
+                p["is_web_resource"] = bool(p.get("url", "").startswith("http") or "tavily" in str(p.get("case_id", "")))
 
     return ReasoningResponse(
         summary             = data.get("summary", "Insufficient evidence found."),

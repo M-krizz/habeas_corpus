@@ -14,6 +14,8 @@ wheels/
 
 # Extracted text output (may contain sensitive legal content)
 output/
+sc_tamil/
+sc_English/
 
 # Temp OCR render images
 c_scan_page*.png

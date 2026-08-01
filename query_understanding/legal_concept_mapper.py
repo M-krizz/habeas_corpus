@@ -60,7 +60,10 @@ def detect_language(text: str) -> str:
         "vandi", "wandi", "vaandi", "vandiye", "oruthan", "modhitan", "kidaikuma",
         "kedaikuma", "epdi", "iruka", "pudichu", "panna", "pannitan", "pannitanga",
         "pannalam", "casela", "policela", "enaku", "enakku", "nalla", "solunga",
-        "solungha", "engalukku", "aachu", "aayiduchu", "varuma", "kuduka", "varum"
+        "solungha", "engalukku", "aachu", "aayiduchu", "varuma", "kuduka", "varum",
+        "enga", "veetula", "romba", "periya", "prachana", "amma", "appa", "appvoda",
+        "sign", "oru", "document", "la", "potutanga", "potuta", "poittanga", "ippo",
+        "aakuraru", "athaya", "kaiyappam", "eazhuthu", "veedu", "nila", "panam", "bouncu"
     }
     tokens = set(re.findall(r"[a-z]+", text.lower()))
     if tokens & tanglish_words:
@@ -186,7 +189,8 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["forge", "forged", "forgery", "signature", "fraud", "cheating",
-         "document", "fake", "impersonate", "போலி", "கையெழுத்து", "ஏமாற்று"],
+         "document", "fake", "impersonate", "sign", "potutanga", "potuta", "poittanga",
+         "kaiyappam", "eazhuthu", "போலி", "கையெழுத்து", "ஏமாற்று"],
         {
             "legal_domain": "Criminal",
             "incident_type": "Forgery / Document Fraud",

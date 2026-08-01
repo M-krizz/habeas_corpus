@@ -57,12 +57,6 @@ def hybrid_rank(
     sem_by_id: dict[str, dict] = {h["case_id"]: h for h in semantic_hits}
     gph_by_id: dict[str, dict] = {h["case_id"]: h for h in graph_hits}
 
-    # Normalise semantic scores (sum strategy → can exceed 1.0 for multi-chunk cases)
-    if sem_by_id:
-        max_sem = max(h["score"] for h in sem_by_id.values()) or 1.0
-    else:
-        max_sem = 1.0
-
     # Union of all case IDs from both sources
     all_case_ids = set(sem_by_id) | set(gph_by_id)
 
@@ -71,10 +65,16 @@ def hybrid_rank(
         sem  = sem_by_id.get(cid, {})
         gph  = gph_by_id.get(cid, {})
 
-        sem_score = (sem.get("score", 0.0) / max_sem)   # normalised to [0,1]
-        gph_score = gph.get("graph_score", 0.0)
+        # Use top_score (highest single-chunk similarity, already in [0, 1])
+        raw_sem = sem.get("top_score", sem.get("score", 0.0))
+        sem_score = min(max(float(raw_sem), 0.0), 1.0)
+        gph_score = min(max(float(gph.get("graph_score", 0.0)), 0.0), 1.0)
 
-        final = round(_ALPHA * sem_score + _BETA * gph_score, 6)
+        # Dynamic weighting: if graph provided no signal for this case, use 100% vector score
+        if gph_score > 0:
+            final = round(0.70 * sem_score + 0.30 * gph_score, 6)
+        else:
+            final = round(sem_score, 6)
 
         merged.append({
             "case_id":          cid,

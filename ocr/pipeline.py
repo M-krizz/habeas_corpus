@@ -334,6 +334,10 @@ def extract_text(
     return result
 
 
+# Alias for backward compatibility with upload endpoints
+process_document = extract_text
+
+
 # ---------------------------------------------------------------------------
 # Entry point — smoke test
 # ---------------------------------------------------------------------------

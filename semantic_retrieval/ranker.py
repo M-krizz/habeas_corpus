@@ -86,7 +86,7 @@ def rank_cases(chunk_results: List[dict]) -> List[dict]:
     best_text:     dict[str, str]       = {}
 
     for chunk in chunk_results:
-        cid   = chunk["case_id"]
+        cid   = chunk.get("case_id") or chunk.get("source") or "unknown"
         score = chunk.get("score", 0.0)
 
         scores[cid] += score

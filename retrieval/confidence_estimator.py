@@ -20,7 +20,7 @@ Threshold: 0.60
 from __future__ import annotations
 
 # Confidence threshold below which adaptive acquisition fires
-CONFIDENCE_THRESHOLD = 0.72
+CONFIDENCE_THRESHOLD = 0.35
 
 
 def estimate_confidence(ranked_results: list[dict]) -> float:
@@ -41,26 +41,26 @@ def estimate_confidence(ranked_results: list[dict]) -> float:
 
     top_score = ranked_results[0]["final_score"]
 
-    # Factor 1: absolute top score (0–1). If top score < 0.55, heavily discount.
-    f1 = top_score if top_score > 0.55 else top_score * 0.5
+    # Factor 1: absolute top score (0–1). If top score > 0.35, count fully.
+    f1 = top_score if top_score > 0.35 else top_score * 0.5
 
     # Factor 2: score gap (top vs second — rewards clear winners when top is high)
     if len(ranked_results) >= 2:
         gap = top_score - ranked_results[1]["final_score"]
-        f2  = min(gap * 2, 1.0) if top_score > 0.60 else 0.2
+        f2  = min(gap * 2, 1.0) if top_score > 0.35 else 0.2
     else:
         f2 = 0.5   # only one result -> lack of corroborating evidence
 
-    # Factor 3: coverage (count ONLY solid matches with score > 0.55)
-    strong_matches = sum(1 for r in ranked_results if r["final_score"] > 0.55)
+    # Factor 3: coverage (count ONLY solid matches with score > 0.35)
+    strong_matches = sum(1 for r in ranked_results if r["final_score"] > 0.35)
     f3 = min(strong_matches / 3, 1.0)
 
     # Factor 4: graph confirmation (did structural graph search confirm relevance?)
     top_gph = ranked_results[0].get("graph_score", 0.0)
-    f4 = 1.0 if top_gph > 0.15 else 0.0
+    f4 = 1.0 if top_gph > 0.15 else 0.5
 
-    # Weighted combination: 45% top match, 20% gap, 20% quality coverage, 15% graph synergy
-    confidence = 0.45 * f1 + 0.20 * f2 + 0.20 * f3 + 0.15 * f4
+    # Weighted combination: 50% top match, 20% gap, 20% quality coverage, 10% graph synergy
+    confidence = 0.50 * f1 + 0.20 * f2 + 0.20 * f3 + 0.10 * f4
     confidence = round(min(confidence, 1.0), 4)
 
     print(f"[confidence_estimator] Score={confidence:.3f}  "

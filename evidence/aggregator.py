@@ -43,7 +43,7 @@ def _load_chunk_index() -> dict[str, list[str]]:
 
     index: dict[str, list[str]] = {}
     for chunk in chunks:
-        cid  = chunk["case_id"]
+        cid  = chunk.get("case_id") or chunk.get("source") or "unknown"
         text = chunk.get("text", "")
         if text:
             index.setdefault(cid, []).append(text)

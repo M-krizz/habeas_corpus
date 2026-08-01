@@ -148,23 +148,22 @@ _VEHICLES = {
     "pedestrian": "Pedestrian",
 }
 
-# Incident keyword patterns
+# Incident keyword patterns (supports English + Tanglish / Romanized Tamil)
 _INCIDENT_PATTERNS = [
-    (["accident", "collision", "hit", "crash", "road"], "Road Accident", "Motor Vehicles"),
-    (["property", "land", "flat", "house", "tenant", "landlord", "evict"],
+    (["accident", "collision", "hit", "crash", "road", "vandi", "wandi", "modhitan", "moadhitan"], "Road Accident", "Motor Vehicles"),
+    (["property", "land", "flat", "house", "tenant", "landlord", "evict", "eviction", "veedu", "nila", "idathula"],
      "Property Dispute", "Property"),
-    (["cheque", "bounce", "dishonour"], "Cheque Bounce", "Criminal"),
+    (["cheque", "bounce", "bounced", "dishonour", "bouncu"], "Cheque Bounce", "Criminal"),
     (["dowry", "domestic", "violence", "harassment", "498"],
      "Domestic Violence", "Family"),
     (["consumer", "product", "defect", "refund", "warranty"],
      "Consumer Complaint", "Consumer"),
-    (["theft", "robbery", "stolen", "steal"], "Theft / Robbery", "Criminal"),
-    (["murder", "kill", "homicide"], "Homicide", "Criminal"),
+    (["theft", "robbery", "stolen", "steal", "thiruttu"], "Theft / Robbery", "Criminal"),
+    (["murder", "kill", "homicide", "kolai"], "Homicide", "Criminal"),
     (["divorce", "custody", "maintenance", "alimony"], "Family Dispute", "Family"),
-    (["employment", "fired", "sacked", "salary", "termination"],
+    (["employment", "fired", "sacked", "salary", "termination", "velai"],
      "Labour Dispute", "Labour"),
-    (["dog", "animal", "bite", "stray"], "Animal Attack", "Criminal/Tort"),
-    (["fraud", "forge", "forgery", "cheating", "fake"], "Fraud / Forgery", "Criminal"),
+    (["fraud", "forge", "forgery", "cheating", "fake", "sign", "potutanga", "potuta", "poittanga", "kaiyappam", "eazhuthu", "signature"], "Fraud / Forgery", "Criminal"),
 ]
 
 
@@ -184,10 +183,10 @@ def _regex_extract(user_message: str, current_memory: dict) -> dict:
         patch["sections"] = [s.upper() if s[-1].isalpha() else s
                              for s in section_matches]
 
-    # Extract vehicle type
+    # Extract vehicle type (word boundaries to prevent matching 'van' in 'vanthu')
     if not current_memory.get("vehicle"):
         for keyword, vehicle_type in _VEHICLES.items():
-            if keyword in msg_lower:
+            if re.search(r"\b" + re.escape(keyword) + r"\b", msg_lower):
                 patch["vehicle"] = vehicle_type
                 break
 

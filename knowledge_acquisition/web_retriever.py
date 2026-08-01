@@ -30,11 +30,11 @@ _TIMEOUT     = 15.0   # seconds
 
 
 def _get_headers() -> dict[str, str]:
-    token = os.getenv("INDIANKANOON_API_KEY", "")
-    return {
-        "Authorization": f"Token {token}",
-        "Accept":        "application/json",
-    }
+    token = os.getenv("INDIANKANOON_API_KEY", "").strip()
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Token {token}"
+    return headers
 
 
 def _build_search_query(legal_query: LegalQuery) -> str:
@@ -130,6 +130,105 @@ def search_indian_kanoon(
         })
 
     print(f"[web_retriever] Retrieved {len(results)} results from Indian Kanoon.")
+    return results
+
+
+def search_tavily(
+    legal_query: LegalQuery,
+    max_results: int = 5,
+) -> list[dict]:
+    """
+    Search Tavily Web Search API for Indian legal precedents and court judgments.
+    Used as an external retrieval engine when local KG confidence is low or when unlinked cases require external verification.
+    """
+    tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not tavily_key:
+        print("[web_retriever] TAVILY_API_KEY not configured.")
+        return []
+
+    # Build search query for Tavily
+    query_parts = ["Indian Supreme Court High Court legal precedent judgment"]
+    if legal_query.incident_type:
+        query_parts.append(legal_query.incident_type)
+    for sec in legal_query.suggested_sections[:3]:
+        query_parts.append(f"Section {sec}")
+    for act in legal_query.suggested_acts[:2]:
+        query_parts.append(act)
+    if hasattr(legal_query, "search_text") and legal_query.search_text:
+        query_parts.append(legal_query.search_text[:100])
+
+    tavily_q = " ".join(query_parts)
+    print(f"[web_retriever] Searching Tavily: '{tavily_q}'")
+
+    try:
+        resp = httpx.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": tavily_key,
+                "query": tavily_q,
+                "max_results": max_results,
+                "search_depth": "advanced",
+                "include_answer": False,
+            },
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        print(f"[web_retriever] Tavily search failed: {exc}")
+        return []
+
+    results = []
+    raw_results = data.get("results", [])
+    for idx, item in enumerate(raw_results):
+        title = item.get("title", "")
+        url = item.get("url", "")
+        content = item.get("content", "")
+
+        # Extract section numbers mentioned in content
+        sec_matches = re.findall(r"\bSection\s+(\d+[A-Za-z]?)\b", content, re.IGNORECASE)
+
+        # Infer court name from URL or title
+        court = "Supreme Court of India"
+        if "highcourt" in url.lower() or "hc" in url.lower() or "high court" in title.lower():
+            court = "High Court"
+
+        doc_id = f"tavily_{idx+1}_{abs(hash(url)) & 0xffffff}"
+
+        results.append({
+            "doc_id": doc_id,
+            "title": title,
+            "headline": content[:400],
+            "url": url,
+            "court": court,
+            "date": "Recent",
+            "text_excerpt": content[:800],
+            "acts": legal_query.suggested_acts,
+            "sections": sec_matches or legal_query.suggested_sections,
+            "relevance_score": 0.65,
+        })
+
+    print(f"[web_retriever] Retrieved {len(results)} results from Tavily.")
+    return results
+
+
+def search_external_cases(
+    legal_query: LegalQuery,
+    max_results: int = 5,
+) -> list[dict]:
+    """
+    Primary entry point for external case retrieval.
+    Tries Tavily first (if configured), then Indian Kanoon as fallback/supplement.
+    """
+    tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
+    results = []
+
+    if tavily_key:
+        results = search_tavily(legal_query, max_results=max_results)
+
+    if not results:
+        results = search_indian_kanoon(legal_query, max_results=max_results)
+
     return results
 
 

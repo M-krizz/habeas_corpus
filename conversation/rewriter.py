@@ -15,6 +15,8 @@ structured legal context, not raw conversational noise.
 
 from __future__ import annotations
 
+import re
+
 from conversation.memory import ConversationMemory
 from query_understanding.schema import LegalQuery
 
@@ -32,34 +34,41 @@ def rewrite_for_retrieval(memory: ConversationMemory) -> LegalQuery:
     -------
     LegalQuery — structured legal query for FAISS + Neo4j retrieval
     """
+    # Assemble the original user query from conversation history
+    user_messages = [
+        m["content"] for m in memory.messages if m["role"] == "user"
+    ]
+    original_query = " | ".join(user_messages[-3:]) if user_messages else search_text
+
+    # Default statutory acts and sections based on incident if empty
+    acts = list(memory.acts)
+    sections = list(memory.sections)
+
+    if not acts or not sections:
+        inc_lower = (memory.incident or "").lower()
+        if "forge" in inc_lower or "fraud" in inc_lower or "sign" in original_query.lower():
+            if not acts: acts = ["Indian Penal Code"]
+            if not sections: sections = ["463", "465", "468", "471", "420"]
+        elif "accident" in inc_lower or "vandi" in original_query.lower():
+            if not acts: acts = ["Motor Vehicles Act", "Indian Penal Code"]
+            if not sections: sections = ["134", "166", "279"]
+        elif "cheque" in inc_lower or "bounce" in inc_lower:
+            if not acts: acts = ["Negotiable Instruments Act"]
+            if not sections: sections = ["138"]
+        elif "property" in inc_lower or "evict" in inc_lower:
+            if not acts: acts = ["Transfer of Property Act"]
+            if not sections: sections = ["106", "111"]
+
     # Build a rich, retrieval-optimized search sentence
     search_parts = []
-
-    if memory.incident:
-        search_parts.append(memory.incident)
-
-    if memory.vehicle:
-        search_parts.append(f"involving {memory.vehicle.lower()}")
-
-    if memory.injury:
-        search_parts.append(f"{memory.injury.lower()} injury")
-
-    for sec in memory.sections:
-        search_parts.append(f"Section {sec}")
-
-    for act in memory.acts:
-        search_parts.append(act)
-
-    if memory.state:
-        search_parts.append(f"in {memory.state}")
-
-    if memory.current_goal:
-        search_parts.append(memory.current_goal.lower())
-
-    # Include any custom facts that might be search-relevant
-    for key, val in memory.custom_facts.items():
-        if isinstance(val, str) and len(val) > 2:
-            search_parts.append(val)
+    if memory.incident: search_parts.append(memory.incident)
+    if memory.vehicle: search_parts.append(f"involving {memory.vehicle.lower()}")
+    if memory.injury: search_parts.append(f"{memory.injury.lower()} injury")
+    for sec in sections: search_parts.append(f"Section {sec}")
+    for act in acts: search_parts.append(act)
+    if memory.state: search_parts.append(f"in {memory.state}")
+    if memory.current_goal: search_parts.append(memory.current_goal.lower())
+    search_parts.append(original_query)
 
     search_text = " ".join(search_parts) if search_parts else "legal dispute"
 
@@ -68,28 +77,37 @@ def rewrite_for_retrieval(memory: ConversationMemory) -> LegalQuery:
 
     # Build keywords from filled slots
     keywords = []
-    if memory.incident:
-        keywords.append(memory.incident.lower())
-    if memory.vehicle:
-        keywords.append(memory.vehicle.lower())
-    if memory.injury:
-        keywords.append(memory.injury.lower())
-    if memory.fir_filed is not None:
-        keywords.append("FIR" if memory.fir_filed else "no FIR")
+    if memory.incident: keywords.append(memory.incident.lower())
+    if memory.vehicle: keywords.append(memory.vehicle.lower())
+    if memory.injury: keywords.append(memory.injury.lower())
+    if memory.fir_filed is not None: keywords.append("FIR" if memory.fir_filed else "no FIR")
 
-    # Assemble the original user query from conversation history
-    user_messages = [
-        m["content"] for m in memory.messages if m["role"] == "user"
-    ]
-    original_query = " | ".join(user_messages[-3:]) if user_messages else search_text
+    # Detect if user spoke in Tamil or Tanglish across conversation messages
+    detected_lang = "en"
+    all_user_text = " ".join([m["content"] for m in memory.messages if m["role"] == "user"])
+    
+    # Check for native Tamil script
+    if re.search(r"[\u0B80-\u0BFF]", all_user_text):
+        detected_lang = "ta"
+    else:
+        # Check for common Tanglish words/patterns
+        tanglish_keywords = [
+            "ena", "vandi", "idichu", "enaka", "iruku", "teriyum", "ungalukku",
+            "puriyudha", "aachen", "sonnanga", "panren", "pannanum", "aachu",
+            "poyi", "vanthu", "senthuten", "paathu", "mudiyum", "pannanga"
+        ]
+        text_words = set(re.findall(r"\b[a-zA-Z]+\b", all_user_text.lower()))
+        if any(w in text_words for w in tanglish_keywords):
+            detected_lang = "ta_roman"
 
     legal_query = LegalQuery(
         original_query=original_query,
+        detected_language=detected_lang,
         legal_domain=memory.legal_domain or "General",
         incident_type=memory.incident or "Legal Dispute",
         keywords=keywords,
-        suggested_acts=memory.acts,
-        suggested_sections=memory.sections,
+        suggested_acts=acts,
+        suggested_sections=sections,
         key_entities=[memory.vehicle] if memory.vehicle else [],
         expanded_concepts=concepts,
     )
@@ -97,6 +115,7 @@ def rewrite_for_retrieval(memory: ConversationMemory) -> LegalQuery:
     print(f"[rewriter] Rewritten search: '{search_text}'")
     print(f"[rewriter] LegalQuery: domain={legal_query.legal_domain}, "
           f"incident={legal_query.incident_type}, "
+          f"detected_language={detected_lang}, "
           f"sections={legal_query.suggested_sections}")
 
     return legal_query

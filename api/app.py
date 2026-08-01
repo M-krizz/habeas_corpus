@@ -1,19 +1,7 @@
 """
-api/app.py — Nyaya-Setu API Server
+api/app.py — Habeas Corpus API Server
 =====================================
-FastAPI application — the HTTP interface for the Nyaya-Setu AI engine.
-
-Endpoints:
-  POST /chat              — multi-turn conversation (Three-Brain Architecture)
-  POST /query             — legacy single-shot query
-  GET  /conversation/{id} — retrieve conversation state
-  POST /feedback          — record user feedback
-  GET  /health            — system health check
-  GET  /staging/status    — view staging pool contents
-  GET  /                  — serve the UI (index.html)
-
-Run:
-    uv run uvicorn api.app:app --reload --port 8000
+FastAPI application — the HTTP interface for the Habeas Corpus AI engine.
 """
 
 from __future__ import annotations
@@ -21,8 +9,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -30,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(
-    title       = "Nyaya-Setu — Adaptive Judicial Knowledge Engine",
+    title       = "Habeas Corpus — Adaptive Judicial Knowledge Engine",
     description = "AI-powered Indian legal research with Three-Brain Architecture: "
                   "Conversation Brain + Knowledge Brain + Reasoning Brain",
     version     = "3.0.0",
@@ -167,6 +155,101 @@ async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+_UPLOADS_DIR = Path(__file__).parent.parent / "uploads"
+
+@app.post("/upload")
+async def upload_document_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    conversation_id: str | None = Form(None),
+):
+    """
+    Case Document Upload & Precedent Matching Endpoint.
+
+    Accepts uploaded PDFs, images, or TXT documents.
+    1. Extracts clean text via OCR pipeline or PyMuPDF/text reader.
+    2. Extracts legal concepts and statutory sections.
+    3. Runs hybrid retrieval (FAISS + Neo4j) to find related precedent judgments.
+    4. Generates structured legal analysis using the Reasoning Brain.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided.")
+
+    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    temp_path = _UPLOADS_DIR / file.filename
+
+    try:
+        content = await file.read()
+        temp_path.write_bytes(content)
+
+        extracted_text = ""
+        document_meta = {
+            "filename": file.filename,
+            "size_bytes": len(content),
+            "mode": "selectable",
+            "page_count": 1,
+            "avg_confidence": None
+        }
+
+        ext = temp_path.suffix.lower()
+        if ext in (".txt", ".md", ".json"):
+            extracted_text = content.decode("utf-8", errors="ignore")
+        else:
+            from ocr.pipeline import process_document
+            doc_result = process_document(str(temp_path))
+            extracted_text = doc_result.text
+            document_meta["mode"] = doc_result.mode
+            document_meta["page_count"] = len(doc_result.pages)
+            document_meta["avg_confidence"] = doc_result.avg_ocr_confidence
+
+        if not extracted_text.strip():
+            raise HTTPException(status_code=422, detail="Could not extract readable text from uploaded document.")
+
+        from query_understanding.legal_concept_mapper import map_legal_concepts
+        from api.pipeline import run_query_with_legal_query
+
+        sample_text = extracted_text[:3000]
+        legal_query = map_legal_concepts(sample_text)
+
+        response, new_hashes = await run_query_with_legal_query(legal_query)
+
+        if new_hashes:
+            from knowledge_acquisition.background_indexer import run_background_indexing
+            background_tasks.add_task(run_background_indexing, new_hashes)
+
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+
+        return {
+            "document": document_meta,
+            "extracted_text_preview": sample_text[:500] + "..." if len(sample_text) > 500 else sample_text,
+            "legal_query": {
+                "domain": legal_query.legal_domain,
+                "incident_type": legal_query.incident_type,
+                "acts": legal_query.suggested_acts,
+                "sections": legal_query.suggested_sections,
+                "search_text": legal_query.search_text,
+            },
+            "analysis": response.model_dump(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[app] Upload document error: {exc}")
+        import traceback
+        traceback.print_exc()
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/feedback")
 async def feedback_endpoint(req: FeedbackRequest):
     """Record user feedback (thumbs up = 1, thumbs down = -1)."""
@@ -229,3 +312,54 @@ async def staging_status():
     """Show the current state of the staging pool."""
     from knowledge_acquisition.staging_pool import get_staging_summary
     return {"staging": get_staging_summary()}
+
+
+_PROJECT_ROOT_DIR = Path(__file__).parent.parent
+_SC_ENGLISH_DIR = _PROJECT_ROOT_DIR / "sc_English"
+_SC_TAMIL_DIR   = _PROJECT_ROOT_DIR / "sc_tamil"
+_OUTPUT_TEXT_DIR = _PROJECT_ROOT_DIR / "output"
+
+def _find_case_file(case_id: str) -> tuple[Path, str] | None:
+    """Locate the original judgment PDF or extracted text file for a given case_id."""
+    clean_id = case_id.strip()
+    if clean_id.endswith(".pdf") or clean_id.endswith(".txt"):
+        clean_id = Path(clean_id).stem
+
+    # Direct PDF check
+    pdf_eng = _SC_ENGLISH_DIR / f"{clean_id}.pdf"
+    if pdf_eng.exists():
+        return (pdf_eng, "application/pdf")
+
+    pdf_tam = _SC_TAMIL_DIR / f"{clean_id}.pdf"
+    if pdf_tam.exists():
+        return (pdf_tam, "application/pdf")
+
+    # Direct TXT check
+    txt_out = _OUTPUT_TEXT_DIR / f"{clean_id}.txt"
+    if txt_out.exists():
+        return (txt_out, "text/plain")
+
+    # Partial/stem search
+    for folder, ext, mime in [(_SC_ENGLISH_DIR, "*.pdf", "application/pdf"), (_SC_TAMIL_DIR, "*.pdf", "application/pdf"), (_OUTPUT_TEXT_DIR, "*.txt", "text/plain")]:
+        if folder.exists():
+            for f in folder.glob(ext):
+                if clean_id.lower() in f.stem.lower() or f.stem.lower() in clean_id.lower():
+                    return (f, mime)
+
+    return None
+
+
+@app.get("/download/case/{case_id}")
+async def download_case_file(case_id: str):
+    """Download the original judgment PDF or text file for a precedent case."""
+    found = _find_case_file(case_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Case file for '{case_id}' not found on server.")
+
+    filepath, mime_type = found
+    return FileResponse(
+        path=filepath,
+        media_type=mime_type,
+        filename=filepath.name,
+        headers={"Content-Disposition": f'attachment; filename="{filepath.name}"'}
+    )

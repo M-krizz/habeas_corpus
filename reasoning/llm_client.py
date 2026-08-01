@@ -21,7 +21,7 @@ import json
 from functools import lru_cache
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 @lru_cache(maxsize=1)
@@ -97,29 +97,31 @@ def call_llm(
     if gemini_key and gemini_key != "YOUR_GEMINI_KEY_HERE":
         client = _get_client()
         if client is not None:
-            try:
-                from google.genai import types
-                model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-                cfg = types.GenerateContentConfig(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                )
-                if json_mode:
-                    cfg.response_mime_type = "application/json"
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=cfg,
-                )
-                raw = response.text.strip()
-                if raw.startswith("```"):
-                    raw = re.sub(r"^```[a-z]*\n?", "", raw)
-                    raw = re.sub(r"\n?```$", "", raw.strip())
-                print(f"[llm_client] Gemini ({model_name}) generated {len(raw)} chars.")
-                return raw
-            except Exception as exc:
-                print(f"[llm_client] Gemini generation failed: {exc}")
-                return None
+            models_to_try = [os.getenv("GEMINI_MODEL", "gemini-flash-latest"), "gemini-flash-latest", "gemini-2.0-flash"]
+            from google.genai import types
+            cfg = types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            )
+            if json_mode:
+                cfg.response_mime_type = "application/json"
+
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=cfg,
+                    )
+                    raw = response.text.strip()
+                    if raw.startswith("```"):
+                        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+                        raw = re.sub(r"\n?```$", "", raw.strip())
+                    print(f"[llm_client] Gemini ({model_name}) generated {len(raw)} chars.")
+                    return raw
+                except Exception as exc:
+                    print(f"[llm_client] Gemini ({model_name}) failed: {exc}")
+                    continue
 
     print("[llm_client] WARNING — Neither OPENROUTER_API_KEY nor GEMINI_API_KEY is properly configured.")
     return None

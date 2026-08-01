@@ -110,26 +110,38 @@ def _l2_normalise(matrix: np.ndarray) -> np.ndarray:
 # Public API
 # ---------------------------------------------------------------------------
 
-def encode_chunks(texts: List[str], batch_size: int = 64) -> np.ndarray:
+def encode_chunks(texts: List[str], batch_size: int = 32) -> np.ndarray:
     """
     Encode a list of document chunk texts into L2-normalised vectors.
-    High-speed optimized for CPU batch processing.
+    GPU-optimized: batch_size=32, max_seq_length=256 on CUDA.
     """
+    import torch
     model = _get_model()
+    on_gpu = torch.cuda.is_available()
     if hasattr(model, "max_seq_length"):
-        model.max_seq_length = 256
+        model.max_seq_length = 256 if on_gpu else 256
 
-    # Truncate texts to max 1200 chars for fast transformer processing
-    truncated_texts = [t[:1200] for t in texts]
+    max_chars = 1500 if on_gpu else 1000
+    truncated_texts = [t[:max_chars] for t in texts]
 
-    vectors = model.encode(
-        truncated_texts,
-        batch_size        = batch_size,
-        normalize_embeddings = False,   # we normalise manually below
-        show_progress_bar = len(texts) > 10,
-        convert_to_numpy  = True,
-    )
-    return _l2_normalise(np.array(vectors, dtype=np.float32))
+    # Process in sub-batches of 1000 under torch.no_grad() for fast inference
+    all_vecs = []
+    chunk_step = 1000
+    with torch.no_grad():
+        for i in range(0, len(truncated_texts), chunk_step):
+            sub_batch = truncated_texts[i:i + chunk_step]
+            vecs = model.encode(
+                sub_batch,
+                batch_size           = batch_size,
+                normalize_embeddings = False,
+                show_progress_bar    = False,
+                convert_to_numpy     = True,
+            )
+            all_vecs.append(vecs)
+            print(f"[embedder] Embedded {min(i + chunk_step, len(truncated_texts))}/{len(truncated_texts)} chunks...")
+
+    combined = np.vstack(all_vecs) if all_vecs else np.empty((0, 1024), dtype=np.float32)
+    return _l2_normalise(combined.astype(np.float32))
 
 
 def encode_query(query: str) -> np.ndarray:

@@ -107,12 +107,12 @@ async def run_query_with_legal_query(
         knowledge_source = "permanent_kg"
 
     else:
-        # Low confidence → Indian Kanoon fallback
-        print(f"[pipeline] Low confidence -> triggering Indian Kanoon retrieval...")
-        from knowledge_acquisition.web_retriever import search_indian_kanoon
+        # Low confidence or missing linked case → External Web Retrieval (Tavily / Indian Kanoon)
+        print(f"[pipeline] Low confidence -> triggering external web retrieval (Tavily / Indian Kanoon)...")
+        from knowledge_acquisition.web_retriever import search_external_cases
         from knowledge_acquisition.staging_pool import stage_case
 
-        web_results = search_indian_kanoon(legal_query, max_results=5)
+        web_results = search_external_cases(legal_query, max_results=5)
 
         for wc in web_results:
             h = stage_case(wc)
