@@ -1,18 +1,23 @@
 """
-main.py — Habeas Corpus Legal Search Engine
-============================================
+main.py — Habeas Corpus Adaptive Judicial Knowledge Engine
+===========================================================
 
 Full ETL pipeline:
 
     pdf_reader.py  →  clean_text.py  →  entity_extractor.py
                                                ↓
-                                        graph_builder.py
+                                         graph_builder.py
                                                ↓
-                                        neo4j_loader.py
+                                         neo4j_loader.py
+                                               ↓
+                              [optional] semantic_retrieval
 
 Run:
     uv run python main.py                          # dry run (no DB write)
     uv run python main.py --live                   # live write to Neo4j
+    uv run python main.py --index                  # dry run + build FAISS index
+    uv run python main.py --live --index           # live Neo4j + build FAISS index
+    uv run python main.py --serve                  # start the web UI + API server
     uv run python main.py path/to/file.txt         # single .txt file
     uv run python main.py path/to/file.txt --live  # single .txt + live write
 """
@@ -87,15 +92,55 @@ def process_all_txt_files(dry_run: bool = True) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Semantic index helper
+# ---------------------------------------------------------------------------
+
+def build_semantic_index() -> None:
+    """Build (or rebuild) the FAISS semantic index from all output/*.txt files."""
+    try:
+        from semantic_retrieval.pipeline import build_index
+    except ImportError:
+        print(
+            "[main] WARNING — semantic_retrieval dependencies not installed.\n"
+            "       Run: pip install sentence-transformers faiss-cpu numpy"
+        )
+        return
+
+    print("\n[main] Building semantic (FAISS) index...")
+    build_index()
+    print("[main] Semantic index build complete.")
+
+
+def start_server(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Start the Habeas Corpus web server (FastAPI + UI)."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("[main] ERROR — uvicorn not installed.\n"
+              "       Run: pip install 'uvicorn[standard]' fastapi")
+        return
+
+    print(f"\n[main] Starting Habeas Corpus server at http://{host}:{port}")
+    print(f"[main] Open http://{host}:{port} in your browser.")
+    print(f"[main] Press Ctrl+C to stop.\n")
+    uvicorn.run("api.app:app", host=host, port=port, reload=False)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    args     = sys.argv[1:]
-    dry_run  = "--live" not in args
-    txt_args = [a for a in args if not a.startswith("--")]
 
-    if txt_args:
+if __name__ == "__main__":
+    args         = sys.argv[1:]
+    dry_run      = "--live"  not in args
+    build_index  = "--index" in args
+    serve        = "--serve" in args
+    txt_args     = [a for a in args if not a.startswith("--")]
+
+    if serve:
+        start_server()
+    elif txt_args:
         # Single file mode
         txt_path = Path(txt_args[0])
         if not txt_path.exists():
@@ -107,3 +152,7 @@ if __name__ == "__main__":
     else:
         # Batch mode — all .txt files in output/
         process_all_txt_files(dry_run=dry_run)
+
+    # Optionally rebuild the semantic (FAISS) index
+    if build_index:
+        build_semantic_index()
