@@ -47,7 +47,8 @@ load_dotenv()
 
 _MERGE_CASE = """
 MERGE (c:Case {name: $name})
-SET   c.decision_date = $decision_date
+SET   c.decision_date = $decision_date,
+      c.language = COALESCE($language, 'English')
 """
 
 _MERGE_COURT = """
@@ -71,12 +72,16 @@ _MERGE_PARTY = """
 MERGE (p:Party {name: $name})
 """
 
+_MERGE_LEGAL_CONCEPT = """
+MERGE (lc:LegalConcept {id: $id})
+SET   lc.name = $name,
+      lc.domain = $domain,
+      lc.aliases = $aliases
+"""
+
 # ---------------------------------------------------------------------------
 # Cypher templates — one MERGE per relationship type
 # ---------------------------------------------------------------------------
-# ``$case_name`` — always the name of the Case node
-# ``$node_name`` — the name / identifier of the related node
-# ``$sec_type``  — only used for INVOLVES_SECTION (composite key)
 
 _REL_TEMPLATES: dict[str, str] = {
     "HEARD_IN": """
@@ -109,6 +114,11 @@ _REL_TEMPLATES: dict[str, str] = {
         MATCH (p:Party {name: $node_name})
         MERGE (c)-[:HAS_RESPONDENT]->(p)
     """,
+    "INVOLVES_CONCEPT": """
+        MATCH (c:Case  {name: $case_name})
+        MATCH (lc:LegalConcept {id: $node_name})
+        MERGE (c)-[:INVOLVES_CONCEPT]->(lc)
+    """,
 }
 
 
@@ -137,7 +147,6 @@ def _get_driver():
 def _run(tx, cypher: str, dry_run: bool, **params: Any) -> None:
     """Execute a single Cypher statement, or log it if dry_run is True."""
     if dry_run:
-        # Show a compact summary — truncate long Cypher for readability
         short = " ".join(cypher.split())[:90]
         print(f"  [DRY] {short}  | params={params}")
     else:
@@ -146,7 +155,10 @@ def _run(tx, cypher: str, dry_run: bool, **params: Any) -> None:
 
 def _merge_nodes(tx, nodes: dict, dry_run: bool) -> None:
     """MERGE all node types into Neo4j (or log if dry_run)."""
-    _run(tx, _MERGE_CASE, dry_run, **nodes["case"])
+    case_data = dict(nodes["case"])
+    if "language" not in case_data:
+        case_data["language"] = "English"
+    _run(tx, _MERGE_CASE, dry_run, **case_data)
 
     if nodes["court"].get("name"):
         _run(tx, _MERGE_COURT, dry_run, **nodes["court"])
@@ -160,18 +172,16 @@ def _merge_nodes(tx, nodes: dict, dry_run: bool) -> None:
     for sec in nodes["sections"]:
         _run(tx, _MERGE_SECTION, dry_run, **sec)
 
-    # Store only the name on the Party node — role lives on the relationship
     for party in nodes["parties"]:
         _run(tx, _MERGE_PARTY, dry_run, name=party["name"])
+
+    for concept in nodes.get("concepts", []):
+        _run(tx, _MERGE_LEGAL_CONCEPT, dry_run, **concept)
 
 
 def _merge_relationships(tx, nodes: dict, relationships: list, dry_run: bool) -> None:
     """
     Create relationships declared in the ``relationships`` list.
-
-    The loader is deliberately data-driven: it loops over relationship
-    types and dispatches to the appropriate Cypher template.  Adding a new
-    relationship type only requires a new template + a new branch here.
     """
     case_name = nodes["case"].get("name", "")
 
@@ -214,6 +224,11 @@ def _merge_relationships(tx, nodes: dict, relationships: list, dry_run: bool) ->
                 if party["role"] == "Respondent":
                     _run(tx, cypher, dry_run,
                          case_name=case_name, node_name=party["name"])
+
+        elif rel_type == "INVOLVES_CONCEPT":
+            for concept in nodes.get("concepts", []):
+                _run(tx, cypher, dry_run,
+                     case_name=case_name, node_name=concept["id"])
 
 
 # ---------------------------------------------------------------------------

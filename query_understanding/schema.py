@@ -15,11 +15,19 @@ class LegalQuery(BaseModel):
     """
     Structured representation of a raw user query after legal concept mapping.
 
-    Every field is populated by the LLM-based concept mapper.  Downstream
+    Every field is populated by the LLM-based concept mapper. Downstream
     modules (graph_retriever, hybrid_ranker, prompt_builder) consume this
     object directly — they never see the raw user string.
     """
     original_query: str = Field(description="The raw user query, unchanged.")
+    detected_language: str = Field(
+        default="en",
+        description="ISO language code of user query, e.g. 'en', 'ta' (Tamil), 'hi' (Hindi)."
+    )
+    query_in_english: str = Field(
+        default="",
+        description="English translation or legal summary of user query if non-English."
+    )
 
     legal_domain: str = Field(
         description="High-level area of law. E.g. 'Motor Vehicles', 'Criminal', "
@@ -59,12 +67,19 @@ class LegalQuery(BaseModel):
         """
         Produce a single enriched search string for FAISS embedding.
 
-        Combines incident type, keywords, acts, and expanded concepts so
-        that the semantic search captures legal meaning rather than just
-        surface words from the user's query.
+        Combines original query (if non-English), English translation, incident type,
+        keywords, acts, and expanded concepts so BGE-M3 captures cross-lingual
+        semantic meaning.
         """
+        query_parts = []
+        if self.query_in_english and self.query_in_english != self.original_query:
+            query_parts.append(self.query_in_english)
+        else:
+            query_parts.append(self.original_query)
+
         parts = (
-            [self.incident_type]
+            query_parts
+            + [self.incident_type]
             + self.keywords
             + self.suggested_acts
             + [f"Section {s}" for s in self.suggested_sections]

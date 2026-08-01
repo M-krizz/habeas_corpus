@@ -63,12 +63,29 @@ def _get_gemini():
 # ---------------------------------------------------------------------------
 # LLM prompt
 # ---------------------------------------------------------------------------
+# Language detector
+# ---------------------------------------------------------------------------
+
+def detect_language(text: str) -> str:
+    """
+    Detect language of input query.
+    Returns ISO language code: 'ta' (Tamil), 'hi' (Hindi), or 'en' (English default).
+    """
+    if re.search(r"[\u0B80-\u0BFF]", text):
+        return "ta"
+    if re.search(r"[\u0900-\u097F]", text):
+        return "hi"
+    return "en"
+
+
+# ---------------------------------------------------------------------------
+# LLM prompt
+# ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """\
-You are a legal concept extraction engine for the Habeas Corpus Indian Legal Research System.
+You are a multilingual legal concept extraction engine for the Habeas Corpus Indian Legal Research System.
 
-Your task is to analyse a user's plain-English description of a legal problem and return
-ONLY a JSON object with the following structure.
+Your task is to analyse a user's legal query (which may be in English, Tamil, Hindi, or another Indian language) and return ONLY a JSON object with the following structure.
 
 DO NOT answer the legal question.
 DO NOT give legal advice.
@@ -76,8 +93,10 @@ ONLY extract and map concepts.
 
 Required JSON structure:
 {
+  "detected_language": "<string: ISO code like 'en', 'ta', 'hi'>",
+  "query_in_english": "<string: clear English translation and legal summary of user query>",
   "legal_domain": "<string: primary area of Indian law>",
-  "incident_type": "<string: specific nature of incident>",
+  "incident_type": "<string: specific nature of incident in English>",
   "keywords": ["<term1>", "<term2>", ...],
   "suggested_acts": ["<Full Act Name>", ...],
   "suggested_sections": ["<number only>", ...],
@@ -86,15 +105,17 @@ Required JSON structure:
 }
 
 Guidelines:
+- detected_language: 'en' for English, 'ta' for Tamil, 'hi' for Hindi, etc.
+- query_in_english: Always provide a clear English translation if query is non-English; if already English, keep as is.
 - legal_domain: Choose from: Motor Vehicles, Criminal, Property, Family, Consumer,
   Labour, Contract, Constitutional, Intellectual Property, Environmental, Tax, Other
-- suggested_acts: Use full Indian statute names (e.g. "Motor Vehicles Act",
+- suggested_acts: Use full Indian statute names in English (e.g. "Motor Vehicles Act",
   "Indian Penal Code", "Transfer of Property Act", "Consumer Protection Act")
-- suggested_sections: Bare numbers only ("134", "304A"). Include only if
+- suggested_sections: Bare numbers only ("134", "166", "304A"). Include only if
   explicitly mentioned or unambiguously implied.
-- expanded_concepts: Legal doctrines (e.g. "tort liability", "res ipsa loquitur",
+- expanded_concepts: Legal doctrines in English (e.g. "tort liability", "res ipsa loquitur",
   "contributory negligence", "mens rea", "promissory estoppel")
-- keywords: Mix of legal and factual terms useful for document retrieval
+- keywords: Mix of legal and factual terms in BOTH user language and English useful for document retrieval
 - Return ONLY valid JSON. No markdown, no explanation, no code fences.
 """
 
@@ -123,6 +144,11 @@ def _llm_map(query: str) -> LegalQuery | None:
             raw = re.sub(r"\n?```$", "", raw)
 
         data = json.loads(raw)
+        if "detected_language" not in data or not data["detected_language"]:
+            data["detected_language"] = detect_language(query)
+        if "query_in_english" not in data or not data["query_in_english"]:
+            data["query_in_english"] = query
+
         return LegalQuery(original_query=query, **data)
 
     except Exception as exc:
@@ -139,7 +165,9 @@ def _llm_map(query: str) -> LegalQuery | None:
 _RULES: list[tuple[list[str], dict]] = [
     (
         ["accident", "vehicle", "bike", "truck", "car", "collision", "hit",
-         "motor", "road", "driving", "motorcycle", "pedestrian"],
+         "motor", "road", "driving", "motorcycle", "pedestrian",
+         "விபத்து", "வண்டி", "மோதி", "இழப்பீடு", "சேதம்", "காரை",
+         "दुर्घटना", "वाहन", "मुआवजा"],
         {
             "legal_domain": "Motor Vehicles",
             "incident_type": "Road Accident",
@@ -150,7 +178,7 @@ _RULES: list[tuple[list[str], dict]] = [
         },
     ),
     (
-        ["dog", "animal", "bite", "attack", "cruelty", "stray"],
+        ["dog", "animal", "bite", "attack", "cruelty", "stray", "நாய்", "கடித்தது", "விலங்கு"],
         {
             "legal_domain": "Criminal/Tort",
             "incident_type": "Animal Attack",
@@ -163,7 +191,7 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["landlord", "tenant", "rent", "eviction", "evict", "lease",
-         "property", "house", "flat", "apartment"],
+         "property", "house", "flat", "apartment", "வாடகை", "வீடு", "நிலம்"],
         {
             "legal_domain": "Property",
             "incident_type": "Tenancy / Eviction Dispute",
@@ -176,7 +204,7 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["forge", "forged", "forgery", "signature", "fraud", "cheating",
-         "document", "fake", "impersonate"],
+         "document", "fake", "impersonate", "போலி", "கையெழுத்து", "ஏமாற்று"],
         {
             "legal_domain": "Criminal",
             "incident_type": "Forgery / Document Fraud",
@@ -201,7 +229,7 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["employment", "fired", "sacked", "termination", "dismiss",
-         "salary", "wage", "labour", "worker", "retrenchment"],
+         "salary", "wage", "labour", "worker", "retrenchment", "வேலை", "சம்பளம்"],
         {
             "legal_domain": "Labour",
             "incident_type": "Wrongful Termination / Labour Dispute",
@@ -214,7 +242,7 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["consumer", "product", "defect", "defective", "warranty",
-         "refund", "service", "cheated", "company"],
+         "refund", "service", "cheated", "company", "பொருள்", "நுகர்வோர்"],
         {
             "legal_domain": "Consumer",
             "incident_type": "Consumer Dispute",
@@ -226,7 +254,7 @@ _RULES: list[tuple[list[str], dict]] = [
     ),
     (
         ["murder", "assault", "rape", "robbery", "theft", "kidnap",
-         "abduction", "dowry", "harassment", "criminal"],
+         "abduction", "dowry", "harassment", "criminal", "கொலை", "திருட்டு"],
         {
             "legal_domain": "Criminal",
             "incident_type": "Criminal Offence",
@@ -246,9 +274,9 @@ def _rule_based_map(query: str) -> LegalQuery:
     if nothing matches.
     """
     q_lower = query.lower()
+    lang = detect_language(query)
     for keywords, fields in _RULES:
         if any(kw in q_lower for kw in keywords):
-            # Extract any section numbers explicitly mentioned in the query
             mentioned_sections = re.findall(r"\bsection\s+(\d+[A-Za-z]?)\b",
                                              q_lower, re.IGNORECASE)
             all_sections = list(dict.fromkeys(
@@ -256,6 +284,8 @@ def _rule_based_map(query: str) -> LegalQuery:
             ))
             return LegalQuery(
                 original_query=query,
+                detected_language=lang,
+                query_in_english=query if lang == "en" else fields["incident_type"],
                 keywords=_extract_keywords(query),
                 key_entities=_extract_keywords(query),
                 **{**fields, "suggested_sections": all_sections},
@@ -264,6 +294,8 @@ def _rule_based_map(query: str) -> LegalQuery:
     # Generic fallback
     return LegalQuery(
         original_query=query,
+        detected_language=lang,
+        query_in_english=query,
         legal_domain="General",
         incident_type="Legal Dispute",
         keywords=_extract_keywords(query),

@@ -117,6 +117,20 @@ def build_prompt(
     """
     parts: list[str] = [_SYSTEM_HEADER]
 
+    # Multilingual response instruction if user asked in non-English
+    lang = getattr(legal_query, "detected_language", "en")
+    lang_names = {"ta": "Tamil", "hi": "Hindi", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam"}
+    if lang != "en" and lang in lang_names:
+        lang_name = lang_names[lang]
+        multi_inst = (
+            f"\nCRITICAL MULTILINGUAL INSTRUCTION:\n"
+            f"• The user asked their question in {lang_name} (language code: {lang}).\n"
+            f"• You MUST write your 'summary' and 'what_to_do' fields in native {lang_name} script "
+            f"(e.g., Tamil text: 'உங்கள் சூழ்நிலைக்கு ஒத்த வழக்குகளில், மோட்டார் வாகனச் சட்டம் பிரிவு 166-ன் கீழ்...').\n"
+            f"• Keep formal case names, court names, and Act names in English for legal accuracy.\n"
+        )
+        parts.append(multi_inst)
+
     # Query context section
     parts.append(_QUERY_SECTION.format(
         original_query = legal_query.original_query,

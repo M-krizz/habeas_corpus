@@ -79,6 +79,14 @@ WHERE any(kw IN $keywords WHERE toLower(c.name) CONTAINS toLower(kw))
 RETURN c.name AS case_id, 1 AS hits, 'keyword' AS match_type
 """
 
+_QUERY_BY_CONCEPT = """
+MATCH (c:Case)-[:INVOLVES_CONCEPT]->(lc:LegalConcept)
+WHERE any(alias IN lc.aliases WHERE any(kw IN $keywords WHERE toLower(alias) CONTAINS toLower(kw)))
+   OR toLower(lc.name) CONTAINS toLower($incident_type)
+WITH c, count(lc) AS concept_hits
+RETURN c.name AS case_id, concept_hits AS hits, 'concept' AS match_type
+"""
+
 _QUERY_CASE_METADATA = """
 MATCH (c:Case {name: $case_name})
 OPTIONAL MATCH (c)-[:HEARD_IN]->(ct:Court)
@@ -109,10 +117,11 @@ def _merge_hits(raw_hits: list[dict]) -> dict[str, dict]:
 
     Scoring weights:
         section match  → 3 points each   (most specific)
+        concept match  → 3 points each   (canonical legal concept)
         act match      → 2 points each
         keyword match  → 1 point each
     """
-    weights = {"section": 3, "act": 2, "keyword": 1}
+    weights = {"section": 3, "concept": 3, "act": 2, "keyword": 1}
     cases: dict[str, dict] = {}
 
     for row in raw_hits:
@@ -170,6 +179,17 @@ def graph_search(legal_query: LegalQuery, top_k: int = 20) -> list[dict]:
     Sorted descending by graph_score.
     """
     all_hits: list[dict] = []
+
+    # Query by canonical LegalConcepts
+    search_keywords = legal_query.keywords + [legal_query.original_query]
+    try:
+        rows = _run_query(_QUERY_BY_CONCEPT, {
+            "keywords": search_keywords,
+            "incident_type": legal_query.incident_type
+        })
+        all_hits.extend(rows)
+    except Exception as exc:
+        print(f"[graph_retriever] Concept query failed: {exc}")
 
     # Query by suggested Acts
     if legal_query.suggested_acts:

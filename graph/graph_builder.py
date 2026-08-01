@@ -45,6 +45,7 @@ _VALID_RELATIONSHIPS: set[tuple[str, str, str]] = {
     ("Case", "INVOLVES_SECTION", "Section"),
     ("Case", "HAS_PETITIONER",   "Party"),
     ("Case", "HAS_RESPONDENT",   "Party"),
+    ("Case", "INVOLVES_CONCEPT", "LegalConcept"),
 }
 
 
@@ -67,6 +68,7 @@ def _validate_case(raw: dict) -> dict:
     return {
         "name":          _clean_str(raw.get("name")),
         "decision_date": _clean_str(raw.get("decision_date")),
+        "language":      _clean_str(raw.get("language")) or "English",
     }
 
 
@@ -110,6 +112,22 @@ def _validate_citation(raw: object) -> str | None:
     return s if s else None
 
 
+def _validate_concept(raw: dict) -> dict | None:
+    cid    = _clean_str(raw.get("id"))
+    name   = _clean_str(raw.get("name"))
+    domain = _clean_str(raw.get("domain"))
+    raw_aliases = raw.get("aliases", [])
+    aliases = [_clean_str(a) for a in raw_aliases if _clean_str(a)]
+    if not cid or not name:
+        return None
+    return {
+        "id":      cid,
+        "name":    name,
+        "domain":  domain,
+        "aliases": aliases,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Top-level builder
 # ---------------------------------------------------------------------------
@@ -117,25 +135,6 @@ def _validate_citation(raw: object) -> str | None:
 def build_graph(legal_graph: dict) -> dict:
     """
     Validate and sanitise the output of ``extract_legal_graph()``.
-
-    Parameters
-    ----------
-    legal_graph : dict
-        Raw output from ``extractor.entity_extractor.extract_legal_graph()``.
-
-    Returns
-    -------
-    dict
-        Loader-ready graph with the same ``nodes`` / ``relationships`` shape
-        but all values validated, type-checked, and whitespace-cleaned.
-
-    Notes
-    -----
-    **Phase 1** (current): pass-through + validation.
-
-    **Phase 2 TODO**: resolve citation strings in ``nodes["citations"]`` to
-    actual Case nodes and append ``("Case", "CITES", "Case")`` to the
-    relationships list.  This will live here — the loader needs no changes.
     """
     raw_nodes = legal_graph.get("nodes", {})
     raw_rels   = legal_graph.get("relationships", [])
@@ -146,6 +145,7 @@ def build_graph(legal_graph: dict) -> dict:
     sections = [v for s in raw_nodes.get("sections", []) if (v := _validate_section(s))]
     parties  = [v for p in raw_nodes.get("parties",  []) if (v := _validate_party(p))]
     citations = [v for c in raw_nodes.get("citations", []) if (v := _validate_citation(c))]
+    concepts = [v for c in raw_nodes.get("concepts",  []) if (v := _validate_concept(c))]
 
     nodes = {
         "case":      _validate_case(raw_nodes.get("case", {})),
@@ -155,6 +155,7 @@ def build_graph(legal_graph: dict) -> dict:
         "sections":  sections,
         "parties":   parties,
         "citations": citations,
+        "concepts":  concepts,
     }
 
     # Keep only relationships that are in the permitted set

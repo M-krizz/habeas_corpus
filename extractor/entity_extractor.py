@@ -454,37 +454,56 @@ def extract_citations(full_text: str) -> list[str]:
 # Top-level graph extractor
 # ---------------------------------------------------------------------------
 
+def extract_concepts(headnote: str, full_text: str) -> list[dict]:
+    """
+    Extract canonical legal concepts with multilingual aliases from document text.
+    """
+    combined = (headnote + " " + full_text[:4000]).lower()
+    concepts = []
+
+    # Road Accident / Motor Vehicles
+    if any(w in combined for w in ["motor vehicle", "accident", "mcop", "collision", "vehicle", "விபத்து", "வண்டி", "மோதி", "இழப்பீடு"]):
+        concepts.append({
+            "id": "CONCEPT_ROAD_ACCIDENT",
+            "name": "Road Accident",
+            "domain": "Motor Vehicles",
+            "aliases": ["Motor Accident", "Road Accident", "Vehicle Collision", "MCOP", "விபத்து", "வண்டி விபத்து", "வாகன விபத்து", "சேதம்", "இழப்பீடு"],
+        })
+
+    # Forgery / Document Fraud
+    if any(w in combined for w in ["forgery", "forged", "cheating", "fraud", "போலி", "கையெழுத்து"]):
+        concepts.append({
+            "id": "CONCEPT_FORGERY",
+            "name": "Forgery / Document Fraud",
+            "domain": "Criminal",
+            "aliases": ["Forgery", "Fake Document", "Fraud", "Cheating", "போலி", "கையெழுத்து ஏமாற்று"],
+        })
+
+    # Tenancy / Eviction
+    if any(w in combined for w in ["tenant", "landlord", "eviction", "rent control", "வாடகை", "வீடு", "நிலம்"]):
+        concepts.append({
+            "id": "CONCEPT_TENANCY",
+            "name": "Tenancy / Eviction Dispute",
+            "domain": "Property",
+            "aliases": ["Tenancy", "Eviction", "Rent Control", "Lease Dispute", "வாடகை", "வீடு eviction"],
+        })
+
+    # Criminal Offence
+    if any(w in combined for w in ["ipc", "penal code", "offence", "assault", "murder", "கொலை", "திருட்டு"]):
+        concepts.append({
+            "id": "CONCEPT_CRIMINAL_OFFENCE",
+            "name": "Criminal Offence",
+            "domain": "Criminal",
+            "aliases": ["Criminal Offence", "IPC", "Penal Code", "FIR", "கொலை", "குற்றம்"],
+        })
+
+    return concepts
+
+
 def extract_legal_graph(raw_text: str) -> dict:
     """
     Run the full extraction pipeline on a single judgment text and return
     a graph-ready dict with separate ``nodes`` and ``relationships`` keys.
-
-    Parameters
-    ----------
-    raw_text : str
-        Raw text from ``pdf_reader.extract_text_from_pdf()`` or a saved .txt
-        file.  May contain form-feed characters and annotation headers.
-
-    Returns
-    -------
-    dict
-        ``nodes`` — typed node dicts ready for Neo4j MERGE:
-
-        .. code-block:: python
-
-            {
-              "case":     {"name": str, "decision_date": str},
-              "court":    {"name": str},
-              "judges":   [{"name": str}, ...],
-              "acts":     [{"name": str, "year": int}, ...],
-              "sections": [{"type": str, "number": str}, ...],
-              "parties":  [{"name": str, "role": str}, ...],
-              "citations": [str, ...]
-            }
-
-        ``relationships`` — list of (subject_type, rel_type, object_type)
-        tuples.  The Neo4j loader loops over these without any legal
-        knowledge — it simply drives MERGE from the tuple.
     """
     # Pre-clean: remove column markers and page headers
     text = _clean_text_for_extraction(raw_text)
@@ -505,10 +524,15 @@ def extract_legal_graph(raw_text: str) -> dict:
         else ""
     )
 
+    # Language detection
+    doc_lang = "Tamil" if re.search(r"[\u0B80-\u0BFF]", text) else "English"
+    extracted_concepts = extract_concepts(headnote, text)
+
     nodes = {
         "case": {
             "name":          case_name,
             "decision_date": extract_date(headnote),
+            "language":      doc_lang,
         },
         "court":     {"name": extract_court(headnote, text)},
         "judges":    extract_judges(headnote),
@@ -516,6 +540,7 @@ def extract_legal_graph(raw_text: str) -> dict:
         "sections":  extract_sections(headnote),
         "parties":   parties,
         "citations": extract_citations(text),
+        "concepts":  extracted_concepts,
     }
 
     relationships = [
@@ -526,6 +551,8 @@ def extract_legal_graph(raw_text: str) -> dict:
         ("Case", "HAS_PETITIONER",   "Party"),
         ("Case", "HAS_RESPONDENT",   "Party"),
     ]
+    for _c in extracted_concepts:
+        relationships.append(("Case", "INVOLVES_CONCEPT", "LegalConcept"))
 
     return {"nodes": nodes, "relationships": relationships}
 
