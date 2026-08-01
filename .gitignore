@@ -11,3 +11,10 @@ wheels/
 .env
 .env.*
 *.log
+
+# Extracted text output (may contain sensitive legal content)
+output/
+
+# Temp OCR render images
+c_scan_page*.png
+c_scan_page1_preview.png

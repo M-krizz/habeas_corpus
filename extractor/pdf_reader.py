@@ -177,7 +177,7 @@ def process_all_pdfs(
             output_path = save_text_to_file(text, pdf_filename, output_dir)
 
             char_count = len(text)
-            print(f"  [OK] Extracted {char_count:,} characters → saved to '{output_path}'")
+            print(f"  [OK] Extracted {char_count:,} characters -> saved to '{output_path}'")
 
             results[pdf_filename] = text
 
