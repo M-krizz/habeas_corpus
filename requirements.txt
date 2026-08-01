@@ -1,0 +1,5 @@
+# Habeas Corpus — Legal Search Engine
+# Requirements (add to this file as we build each step)
+
+# Step 1 — PDF Extraction
+pymupdf>=1.24.0

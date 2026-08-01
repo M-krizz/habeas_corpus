@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets — NEVER commit
+.env
+
+# Extracted text output (may contain sensitive legal content)
+output/
+
+# Temp OCR render images
+c_scan_page*.png
+c_scan_page1_preview.png
