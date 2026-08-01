@@ -121,6 +121,20 @@ _CITATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_TAMIL_MONTHS = {
+    "ஜனவரி": "01", "பிப்ரவரி": "02", "மார்ச்": "03", "ஏப்ரல்": "04",
+    "மே": "05", "ஜூன்": "06", "ஜூலை": "07", "ஆகஸ்ட்": "08",
+    "செப்டம்பர்": "09", "அக்டோபர்": "10", "நவம்பர்": "11", "டிசம்பர்": "12",
+}
+
+_TAMIL_DATE_PATTERN = re.compile(
+    r"(\d{1,2})\s+(ஜனவரி|பிப்ரவரி|மார்ச்|ஏப்ரல்|மே|ஜூன்|ஜூலை|ஆகஸ்ட்|செப்டம்பர்|அக்டோபர்|நவம்பர்|டிசம்பர்)\s+(\d{4})"
+)
+
+_TAMIL_SECTION_PATTERN = re.compile(
+    r"(?:பிரிவு|சட்டம்)\s+(\d+[A-Za-z]?)"
+)
+
 _ACT_PATTERN = re.compile(
     r"[A-Z][A-Za-z\s&,()]+?(?:Act|Code|Rules|Regulations?|Constitution|"
     r"Ordinance|Order|Statute)"
@@ -282,7 +296,7 @@ def extract_parties(headnote: str) -> list[dict]:
     lines = [ln.strip() for ln in headnote.splitlines() if ln.strip()]
 
     for i, line in enumerate(lines):
-        if re.match(r"^v\.?s?\.?$", line, re.IGNORECASE):
+        if re.match(r"^(?:v\.?s?\.?|எதிர்|-எதிர்-|\/ எதிர் \/|\?vjph;\?)$", line, re.IGNORECASE):
             # Walk backward for petitioner (skip noise like page numbers)
             petitioner_parts = []
             for j in range(i - 1, max(i - 5, -1), -1):
@@ -316,50 +330,51 @@ def extract_parties(headnote: str) -> list[dict]:
 
 def extract_date(headnote: str) -> str:
     """
-    Extract and ISO-format the decision date.
-
-    Returns
-    -------
-    str  ISO-8601 date string ("2022-01-07"), or "" if not found.
+    Extract and ISO-format the decision date (supports English and Tamil date formats).
     """
     match = _DATE_PATTERN.search(headnote)
     if match:
         return _parse_date(match.group())
+
+    t_match = _TAMIL_DATE_PATTERN.search(headnote)
+    if t_match:
+        day, month_name, year = t_match.groups()
+        month = _TAMIL_MONTHS.get(month_name, "01")
+        return f"{year}-{month}-{int(day):02d}"
+
     return ""
 
 
 def extract_judges(headnote: str) -> list[dict]:
     """
-    Extract judge names from the bracketed judge block, e.g.
-    [N. V. RAMANA, CJI, A. S. BOPANNA AND HIMA KOHLI, JJ.]
-
-    Returns
-    -------
-    list of {"name": str}
+    Extract judge names from English bracketed block or Tamil header.
     """
     match = _JUDGE_BLOCK_PATTERN.search(headnote)
-    if not match:
-        return []
+    if match:
+        raw_block = match.group(1)
+        raw_block = _normalise_whitespace(raw_block)
+        raw_block = raw_block.rstrip("]")
+        raw_block = _JUDGE_SUFFIX.sub("", raw_block)
 
-    raw_block = match.group(1)
-    raw_block = _normalise_whitespace(raw_block)
-    raw_block = raw_block.rstrip("]")
-    raw_block = _JUDGE_SUFFIX.sub("", raw_block)
+        parts = re.split(r"\s+AND\s+|,", raw_block, flags=re.IGNORECASE)
+        judges = [_normalise_whitespace(p) for p in parts]
+        judges = [j for j in judges if len(j) > 2]
+        return [{"name": j} for j in judges]
 
-    parts = re.split(r"\s+AND\s+|,", raw_block, flags=re.IGNORECASE)
-    judges = [_normalise_whitespace(p) for p in parts]
-    judges = [j for j in judges if len(j) > 2]
-    return [{"name": j} for j in judges]
+    t_match = re.search(r"நீதியரசர்(?:கள்)?\s+([^\n\)]+)", headnote)
+    if t_match:
+        raw_j = t_match.group(1).replace("திரு.", "").replace("திருமதி.", "").replace("மற்றும்", ",").replace("&", ",")
+        parts = [_normalise_whitespace(j) for j in raw_j.split(",")]
+        parts = [j for j in parts if len(j) > 2]
+        if parts:
+            return [{"name": p} for p in parts]
+
+    return []
 
 
 def extract_court(headnote: str, full_text: str) -> str:
     """
-    Identify the court name.
-
-    Strategy:
-      1. Look for reporter / header keywords (highest priority, unambiguous).
-      2. Scan headnote for a known court name verbatim.
-      3. Fall back to spaCy ORG entities in the first 500 chars.
+    Identify the court name (supports English and Tamil court names).
     """
     search_zone = headnote + full_text[3_000:6_000]
 
@@ -367,6 +382,8 @@ def extract_court(headnote: str, full_text: str) -> str:
     if re.search(r"\[?\d{4}\]?\s+\d+\s+S\.C\.R\.", search_zone):
         return "Supreme Court of India"
     if re.search(r"SUPREME COURT REPORTS", search_zone, re.IGNORECASE):
+        return "Supreme Court of India"
+    if re.search(r"உச்ச\s*நீதிமன்றம்|உ&ச\s*ntம|ePjpkd;wk;", search_zone):
         return "Supreme Court of India"
 
     # Step 2 — verbatim known court in headnote only
@@ -385,11 +402,7 @@ def extract_court(headnote: str, full_text: str) -> str:
 
 def extract_acts(headnote: str) -> list[dict]:
     """
-    Extract statute names from the headnote and return structured dicts.
-
-    Returns
-    -------
-    list of {"name": str, "year": int}
+    Extract statute names from English headnotes or Tamil legal terms.
     """
     matches = _ACT_PATTERN.findall(headnote)
     seen: set[str] = set()
@@ -403,21 +416,28 @@ def extract_acts(headnote: str) -> list[dict]:
         if key not in seen:
             seen.add(key)
             acts.append(parsed)
+
+    # Tamil Act mapping
+    tamil_act_mappings = [
+        ("மோட்டார் வாகன", {"name": "Motor Vehicles Act", "year": 1988}),
+        ("இந்திய தண்டனை", {"name": "Indian Penal Code", "year": 1860}),
+        ("குற்றவியல் நடைமுறை", {"name": "Code of Criminal Procedure", "year": 1973}),
+        ("சொத்து உரிமை", {"name": "Transfer of Property Act", "year": 1882}),
+        ("நுகர்வோர் பாதுகாப்பு", {"name": "Consumer Protection Act", "year": 2019}),
+    ]
+    for key_term, act_dict in tamil_act_mappings:
+        if key_term in headnote:
+            act_key = f"{act_dict['name']}|{act_dict['year']}"
+            if act_key not in seen:
+                seen.add(act_key)
+                acts.append(act_dict)
+
     return sorted(acts, key=lambda a: a["name"])
 
 
 def extract_sections(headnote: str) -> list[dict]:
     """
-    Extract section / article / clause / rule references and return
-    normalised structured dicts.
-
-    Critically, 's.34' and 'Section 34' both produce
-    ``{"type": "Section", "number": "34"}`` so Neo4j MERGE deduplicates
-    them automatically — even across different documents.
-
-    Returns
-    -------
-    list of {"type": str, "number": str}
+    Extract section references (supports English and Tamil section patterns).
     """
     matches = _SECTION_PATTERN.findall(headnote)
     seen: set[str] = set()
@@ -431,6 +451,15 @@ def extract_sections(headnote: str) -> list[dict]:
         if key not in seen:
             seen.add(key)
             sections.append(normed)
+
+    # Tamil section pattern
+    t_sec_matches = _TAMIL_SECTION_PATTERN.findall(headnote)
+    for num in t_sec_matches:
+        key = f"Section|{num}"
+        if key not in seen:
+            seen.add(key)
+            sections.append({"type": "Section", "number": num})
+
     return sorted(sections, key=lambda s: (s["type"], s["number"]))
 
 

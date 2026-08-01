@@ -166,6 +166,9 @@ def start_server(host: str = "127.0.0.1", port: int = 8000) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+
     args        = sys.argv[1:]
     dry_run     = "--live"  not in args
     build_index = "--index" in args
@@ -194,7 +197,11 @@ if __name__ == "__main__":
                 sys.exit(1)
             result = process_file(source_path, dry_run=dry_run, engine=engine)
             print("\n[main] Graph JSON:")
-            print(json.dumps(result, indent=2, ensure_ascii=False))
+            out_json = json.dumps(result, indent=2, ensure_ascii=False)
+            try:
+                print(out_json)
+            except UnicodeEncodeError:
+                print(out_json.encode("ascii", errors="backslashreplace").decode("ascii"))
         else:
             # Batch mode — all .txt files in output/
             process_all_txt_files(dry_run=dry_run)

@@ -148,7 +148,11 @@ def _run(tx, cypher: str, dry_run: bool, **params: Any) -> None:
     """Execute a single Cypher statement, or log it if dry_run is True."""
     if dry_run:
         short = " ".join(cypher.split())[:90]
-        print(f"  [DRY] {short}  | params={params}")
+        msg = f"  [DRY] {short}  | params={params}"
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            print(msg.encode("ascii", errors="backslashreplace").decode("ascii"))
     else:
         tx.run(cypher, **params)
 

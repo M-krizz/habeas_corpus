@@ -18,3 +18,4 @@ output/
 # Temp OCR render images
 c_scan_page*.png
 c_scan_page1_preview.png
+tam_page1.png
